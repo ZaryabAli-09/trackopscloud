@@ -80,7 +80,7 @@ function ResetPasswordContent() {
         <CardFooter>
           <p className="text-sm text-center">
             Remember your password?{" "}
-            <a href="/auth/login" className="font-medium text-primary hover:underline">
+            <a href="/login" className="font-medium text-primary hover:underline">
               Sign in
             </a>
           </p>

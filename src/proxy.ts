@@ -1,7 +1,7 @@
 import { withAuth } from "next-auth/middleware";
 import { NextResponse } from "next/server";
 
-export default withAuth(
+export const proxy = withAuth(
   function middleware(req) {
     const token = req.nextauth.token;
     const pathname = req.nextUrl.pathname;
@@ -9,7 +9,7 @@ export default withAuth(
     // Platform admin routes
     if (pathname.startsWith("/platform-admin")) {
       if (token?.role !== "platform_admin") {
-        return NextResponse.rewrite(new URL("/auth/login", req.url));
+        return NextResponse.redirect(new URL("/login", req.url));
       }
       return NextResponse.next();
     }
@@ -17,19 +17,19 @@ export default withAuth(
     // Company dashboard routes
     if (pathname.startsWith("/dashboard")) {
       if (!token) {
-        return NextResponse.rewrite(new URL("/auth/login", req.url));
+        return NextResponse.redirect(new URL("/login", req.url));
       }
       if (token.role === "platform_admin") {
-        return NextResponse.rewrite(new URL("/platform-admin", req.url));
+        return NextResponse.redirect(new URL("/platform-admin", req.url));
       }
       if (token.companyStatus !== "approved") {
-        return NextResponse.rewrite(new URL("/auth/login?error=company_not_approved", req.url));
+        return NextResponse.redirect(new URL("/login?error=company_not_approved", req.url));
       }
       return NextResponse.next();
     }
 
     // Auth routes - redirect if already logged in
-    if (pathname.startsWith("/auth")) {
+    if (pathname === "/login" || pathname.startsWith("/auth/")) {
       if (token) {
         if (token.role === "platform_admin") {
           return NextResponse.redirect(new URL("/platform-admin", req.url));
@@ -52,5 +52,5 @@ export default withAuth(
 );
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/platform-admin/:path*", "/auth/:path*"],
+  matcher: ["/dashboard/:path*", "/platform-admin/:path*", "/login", "/auth/:path*"],
 };

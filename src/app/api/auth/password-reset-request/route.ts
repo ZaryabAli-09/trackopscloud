@@ -39,7 +39,7 @@ async function handler(req: NextRequest, correlationId: string) {
     // Send password reset email
     try {
       const appUrl = process.env.APP_URL || "http://localhost:3000";
-      const resetUrl = `${appUrl}/auth/reset-password?token=${resetToken}`;
+      const resetUrl = `${appUrl}/reset-password?token=${resetToken}`;
       await sendEmail(passwordResetEmail(user.email, resetUrl));
     } catch (emailError) {
       console.error("Failed to send password reset email:", emailError);

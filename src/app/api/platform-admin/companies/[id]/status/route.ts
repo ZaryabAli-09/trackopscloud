@@ -96,7 +96,7 @@ async function handler(req: NextRequest, ctx: import("@/lib/permissions").Author
           isUsed: false,
         });
 
-        const setupUrl = `${appUrl}/auth/activate?token=${activationToken}`;
+        const setupUrl = `${appUrl}/activate?token=${activationToken}`;
         await sendEmail(companyApprovedEmail(company.name, company.email, setupUrl));
       } else if (status === "rejected") {
         await sendEmail(companyRejectedEmail(company.name, company.email, rejectionReason));

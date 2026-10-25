@@ -98,8 +98,8 @@ export const authConfig = {
     },
   },
   pages: {
-    signIn: "/auth/login",
-    error: "/auth/login",
+    signIn: "/login",
+    error: "/login",
   },
   secret: serverEnv.AUTH_SECRET,
 };

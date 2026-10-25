@@ -3,6 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
+import { signIn } from "next-auth/react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -23,20 +24,18 @@ export default function LoginPage() {
   });
 
   async function onSubmit(values: z.infer<typeof loginSchema>) {
-    const res = await fetch("/api/auth/callback/credentials", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(values),
+    const result = await signIn("credentials", {
+      ...values,
+      redirect: false,
     });
 
-    if (!res.ok) {
-      const error = await res.json();
-      alert(error.message || "Invalid email or password");
+    if (!result || result.error) {
+      alert("Invalid email or password");
       return;
     }
 
     if (typeof window !== "undefined") {
-      window.location.replace("/dashboard");
+      window.location.replace(result.url || "/dashboard");
     }
   }
 
@@ -69,13 +68,13 @@ export default function LoginPage() {
         <CardFooter className="flex flex-col space-y-2">
           <p className="text-sm text-center">
             New to TrackOpsCloud?{" "}
-            <Link href="/auth/register" className="font-medium text-primary hover:underline">
+            <Link href="/register" className="font-medium text-primary hover:underline">
               Register your company
             </Link>
           </p>
           <p className="text-sm text-center">
             Forgot password?{" "}
-            <Link href="/auth/reset-password" className="font-medium text-primary hover:underline">
+            <Link href="/reset-password" className="font-medium text-primary hover:underline">
               Reset password
             </Link>
           </p>
