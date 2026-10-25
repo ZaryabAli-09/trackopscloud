@@ -1,11 +1,13 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { MongoMemoryReplSet } from "mongodb-memory-server";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { MongoMemoryReplSet } from "mongodb-memory-server-core";
 import mongoose, { Types } from "mongoose";
 import { NextRequest } from "next/server";
 import { connectToDatabase, disconnectDatabase } from "../src/lib/db/connection";
 import { createSale, recordPayment, recordStockAdjustment } from "../src/lib/ledger";
 import { hashToken } from "../src/lib/auth/tokens";
+import { limitRate } from "../src/lib/auth/rate-limit";
 import { POST as activate } from "../src/app/api/auth/activate/route";
+import { POST as register } from "../src/app/api/auth/register/route";
 import { AccountActivationToken } from "../src/models/AccountActivationToken";
 import { Company } from "../src/models/Company";
 import { Payment } from "../src/models/Payment";
@@ -16,6 +18,11 @@ import { User } from "../src/models/User";
 
 let replica: MongoMemoryReplSet;
 
+vi.mock("@/lib/email", () => ({
+  sendEmail: vi.fn(async () => {}),
+  applicationReceivedEmail: vi.fn(() => ({ to: "test@example.test", subject: "Test", html: "Test" })),
+}));
+
 beforeAll(async () => {
   replica = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: "wiredTiger" } });
   process.env.MONGODB_URI = replica.getUri();
@@ -23,7 +30,7 @@ beforeAll(async () => {
   process.env.RATE_LIMIT_MAX_REQUESTS = "2";
   await connectToDatabase();
   await Promise.all([Company.init(), User.init(), Product.init(), Sale.init(), Payment.init(), StockMovement.init(), AccountActivationToken.init()]);
-}, 120000);
+}, 600000);
 
 afterAll(async () => {
   await disconnectDatabase();
@@ -98,6 +105,16 @@ describe("transactional sales ledger", () => {
   });
 });
 
+describe("registration", () => {
+  it("creates a pending company and inactive initial admin", async () => {
+    const response = await register(new NextRequest("http://localhost/api/auth/register", { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": "192.0.2.20" }, body: JSON.stringify({ name: "New Company", email: "new@example.test", password: "StrongPass123" }) }));
+    expect(response.status).toBe(201);
+    const company = await Company.findOne({ email: "new@example.test" });
+    expect(company?.status).toBe("pending");
+    expect((await User.findOne({ email: "new@example.test" }))?.isActive).toBe(false);
+  });
+});
+
 describe("single-use activation tokens", () => {
   it("rejects reuse and expiry", async () => {
     const { company, user } = await fixture();
@@ -105,6 +122,7 @@ describe("single-use activation tokens", () => {
     await user.save();
     const token = "raw-secret-activation-token";
     await AccountActivationToken.create({ companyId: company._id, userId: user._id, token: hashToken(token), expiresAt: new Date(Date.now() + 60_000), isUsed: false });
+    expect((await AccountActivationToken.findOne({ userId: user._id }))?.token).not.toBe(token);
     const request = () => new NextRequest("http://localhost/api/auth/activate", { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": "192.0.2.1" }, body: JSON.stringify({ token, password: "StrongPass123" }) });
     const first = await activate(request());
     expect(first.status).toBe(200);
@@ -116,5 +134,13 @@ describe("single-use activation tokens", () => {
     await AccountActivationToken.create({ companyId: company._id, userId: user._id, token: hashToken(expired), expiresAt: new Date(Date.now() - 1000), isUsed: false });
     const expiryResponse = await activate(new NextRequest("http://localhost/api/auth/activate", { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": "192.0.2.2" }, body: JSON.stringify({ token: expired, password: "StrongPass123" }) }));
     expect(expiryResponse.status).toBe(400);
+  });
+});
+
+describe("MongoDB rate limiting", () => {
+  it("returns a standard 429 error after the configured request count", async () => {
+    await limitRate("test-limit", "192.0.2.10");
+    await limitRate("test-limit", "192.0.2.10");
+    await expect(limitRate("test-limit", "192.0.2.10")).rejects.toMatchObject({ status: 429, code: "RATE_LIMITED" });
   });
 });

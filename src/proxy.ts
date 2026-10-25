@@ -28,29 +28,16 @@ export const proxy = withAuth(
       return NextResponse.next();
     }
 
-    // Auth routes - redirect if already logged in
-    if (pathname === "/login" || pathname.startsWith("/auth/")) {
-      if (token) {
-        if (token.role === "platform_admin") {
-          return NextResponse.redirect(new URL("/platform-admin", req.url));
-        }
-        if (token.companyStatus === "approved") {
-          return NextResponse.redirect(new URL("/dashboard", req.url));
-        }
-      }
-      return NextResponse.next();
-    }
-
     return NextResponse.next();
   },
   {
     callbacks: {
       authorized: () => true, // We handle authorization in the middleware function
     },
-    secret: process.env.AUTH_SECRET,
+    secret: process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET,
   }
 );
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/platform-admin/:path*", "/login", "/auth/:path*"],
+  matcher: ["/dashboard/:path*", "/platform-admin/:path*"],
 };

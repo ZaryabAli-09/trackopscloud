@@ -1,50 +1,28 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus } from "lucide-react";
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
+import type { ColumnDef } from "@tanstack/react-table";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DataTable } from "@/components/shared/data-table";
+import { PageHeader } from "@/components/shared/page-header";
+import { StatusBadge } from "@/components/shared/status-badge";
+import { useResourceList } from "@/hooks/use-resource-list";
+import { apiRequest } from "@/lib/client/api";
+import { formatMoney } from "@/lib/money";
+import { appConfig } from "@/config/app.config";
+
+type SaleRow = { _id: string; saleNumber: string; customerId?: { name: string } | null; saleDate: string; grandTotal: number; outstandingBalance: number; paymentStatus: string };
 
 export default function SalesPage() {
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Sales Ledger</h1>
-          <p className="text-muted-foreground">Record sales transactions and track payments.</p>
-        </div>
-        <Link href="/dashboard/sales/new">
-          <Button className="flex items-center gap-2">
-            <Plus className="w-4 h-4" /> New Sale
-          </Button>
-        </Link>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Sales Transactions</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Sale #</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Total</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <TableRow>
-                <TableCell colSpan={6} className="text-muted-foreground text-center py-4">
-                  No sales recorded yet
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-    </div>
-  );
+  const { data: session } = useSession();
+  const [paymentStatus, setPaymentStatus] = useState("");
+  const [currency, setCurrency] = useState<string>(appConfig.defaultCurrency);
+  const list = useResourceList<SaleRow>("/api/company/sales", { paymentStatus });
+  useEffect(() => { void apiRequest<{ settings?: { defaultCurrency?: string } }>("/api/company/settings").then((data) => setCurrency(data.settings?.defaultCurrency ?? appConfig.defaultCurrency)).catch(() => {}); }, []);
+  const columns: ColumnDef<SaleRow>[] = [{ accessorKey: "saleNumber", header: "Sale", cell: ({ row }) => <Link href={`/dashboard/sales/${row.original._id}`} className="underline">{row.original.saleNumber}</Link> }, { id: "customer", header: "Customer", cell: ({ row }) => row.original.customerId?.name ?? "Walk-in" }, { accessorKey: "saleDate", header: "Date", cell: ({ row }) => new Date(row.original.saleDate).toLocaleDateString() }, { accessorKey: "grandTotal", header: "Total", cell: ({ row }) => formatMoney(row.original.grandTotal, currency) }, { accessorKey: "outstandingBalance", header: "Outstanding", cell: ({ row }) => formatMoney(row.original.outstandingBalance, currency) }, { accessorKey: "paymentStatus", header: "Status", cell: ({ row }) => <StatusBadge status={row.original.paymentStatus} /> }];
+  const action = session?.user?.role === "company_admin" ? <Button render={<Link href="/dashboard/sales/new" />}>New sale</Button> : null;
+  return <div className="space-y-6"><PageHeader title="Sales" description="Transactions, payments and balances." action={action} /><DataTable data={list.data} columns={columns} page={list.page} totalPages={list.totalPages} onPageChange={list.setPage} loading={list.loading} error={list.error} emptyTitle="No sales yet" action={action} filter={<Select value={paymentStatus || "all"} onValueChange={(value) => { setPaymentStatus(value === "all" ? "" : String(value)); list.setPage(1); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All statuses</SelectItem><SelectItem value="pending">Pending</SelectItem><SelectItem value="partial">Partial</SelectItem><SelectItem value="paid">Paid</SelectItem><SelectItem value="voided">Voided</SelectItem></SelectContent></Select>} /></div>;
 }

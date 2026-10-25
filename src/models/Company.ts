@@ -1,8 +1,11 @@
 import mongoose, { Schema, Document, model, Model, Types } from "mongoose";
+import { appConfig } from "@/config/app.config";
 
 export type CompanyStatus = "pending" | "approved" | "rejected" | "suspended";
 
 export interface ICompany extends Document {
+  createdAt: Date;
+  updatedAt: Date;
   name: string;
   email: string;
   status: CompanyStatus;
@@ -65,7 +68,7 @@ const companySchema = new Schema<ICompany>(
       allowCustomNegativeStock: { type: Boolean, default: false },
       defaultLowStockThreshold: { type: Number, default: 0, min: 0 },
       taxRate: { type: Number, default: 0 },
-      defaultCurrency: { type: String, default: "USD" },
+      defaultCurrency: { type: String, default: appConfig.defaultCurrency },
     },
     userCount: { type: Number, default: 0 },
     productCount: { type: Number, default: 0 },

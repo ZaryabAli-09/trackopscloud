@@ -5,6 +5,15 @@ import { cn } from "cn"
 import * as RechartsPrimitive from "recharts"
 import type { TooltipValueType } from "recharts"
 
+// Keep chart-library imports inside the generated shadcn chart module.
+export const AreaChart = RechartsPrimitive.AreaChart
+export const Area = RechartsPrimitive.Area
+export const BarChart = RechartsPrimitive.BarChart
+export const Bar = RechartsPrimitive.Bar
+export const CartesianGrid = RechartsPrimitive.CartesianGrid
+export const XAxis = RechartsPrimitive.XAxis
+export const YAxis = RechartsPrimitive.YAxis
+
 // Format: { THEME_NAME: CSS_SELECTOR }
 const THEMES = { light: "", dark: ".dark" } as const
 

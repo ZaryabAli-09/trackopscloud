@@ -24,11 +24,14 @@ const companyNav: NavItem[] = [
   { label: "Employees", href: "/dashboard/employees", icon: Users, adminOnly: true },
   { label: "Reports", href: "/dashboard/reports", icon: BarChart3 },
   { label: "Settings", href: "/dashboard/settings", icon: Settings, adminOnly: true },
+  { label: "Account", href: "/dashboard/account", icon: Users },
 ];
 
 const platformNav: NavItem[] = [
   { label: "Overview", href: "/platform-admin", icon: LayoutDashboard },
   { label: "Companies", href: "/platform-admin/companies", icon: Building2 },
+  { label: "Users", href: "/platform-admin/users", icon: Users },
+  { label: "Audit Logs", href: "/platform-admin/audit-logs", icon: Activity },
 ];
 
 function NavUser({ viewer }: { viewer: Viewer }) {

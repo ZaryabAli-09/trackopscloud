@@ -42,19 +42,14 @@ export async function sendEmail(options: EmailOptions): Promise<void> {
     return;
   }
 
-  try {
-    const transport = await getTransporter();
-    await transport.sendMail({
-      from: serverEnv.SMTP_FROM ?? serverEnv.GMAIL_SMTP_EMAIL,
-      to: options.to,
-      subject: `[${appConfig.name}] ${options.subject}`,
-      html: options.html,
-      text: options.text,
-    });
-  } catch (error) {
-    console.error("Email sending failed:", error);
-    throw new Error("Failed to send email");
-  }
+  const transport = await getTransporter();
+  await transport.sendMail({
+    from: serverEnv.SMTP_FROM ?? serverEnv.GMAIL_SMTP_EMAIL,
+    to: options.to,
+    subject: `[${appConfig.name}] ${options.subject}`,
+    html: options.html,
+    text: options.text,
+  });
 }
 
 export function applicationReceivedEmail(companyName: string, to: string): EmailOptions {
