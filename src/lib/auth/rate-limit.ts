@@ -13,7 +13,7 @@ export async function limitRate(scope: string, identifier: string) {
   const record = await RateLimit.findOneAndUpdate(
     { key },
     { $inc: { count: 1 }, $setOnInsert: { expiresAt: new Date((bucket + 1) * windowMs) } },
-    { upsert: true, new: true, setDefaultsOnInsert: true },
+    { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
   );
   if (record.count > maxRequests) {
     throw new AppError({ status: 429, code: "RATE_LIMITED", message: "Too many requests. Please try again later." });

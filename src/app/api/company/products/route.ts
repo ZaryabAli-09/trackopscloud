@@ -1,9 +1,10 @@
-import mongoose, { Types } from "mongoose";
+import { Types } from "mongoose";
 import { z } from "zod";
 import { defineRoute } from "@/lib/api/define-route";
 import { createdResponse, successResponse } from "@/lib/api/response";
 import { escapeRegex, listMeta } from "@/lib/api/list";
 import { recordStockAdjustment } from "@/lib/ledger";
+import { withDatabaseTransaction } from "@/lib/db/transaction";
 import { paginationSchema, productSchema } from "@/lib/validation/schemas";
 import { AuditLog } from "@/models/AuditLog";
 import { Product } from "@/models/Product";
@@ -37,17 +38,14 @@ export const POST = defineRoute(
   async (_request, { auth, body }) => {
     const companyId = new Types.ObjectId(auth!.companyId!);
     const userId = new Types.ObjectId(auth!.userId);
-    const session = await mongoose.startSession();
-    try {
-      await session.withTransaction(async () => {
+    await withDatabaseTransaction(async (session) => {
         const { openingStock, ...fields } = body;
         const docs = await Product.create([{ ...fields, sku: fields.sku.toUpperCase(), companyId, currentStock: 0, isArchived: false }], { session });
         if (openingStock > 0) {
           await recordStockAdjustment({ companyId, userId, productId: docs[0]._id, movementType: "opening_stock", quantity: openingStock, referenceType: "opening", referenceId: docs[0]._id }, session);
         }
         await AuditLog.create([{ userId, companyId, action: "product.create", entityType: "Product", entityId: docs[0]._id }], { session });
-      });
-    } finally { await session.endSession(); }
+    });
     return createdResponse(await Product.findOne({ companyId, sku: body.sku.toUpperCase() }), "Product created successfully");
   },
 );

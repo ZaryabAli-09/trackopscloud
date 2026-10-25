@@ -1,6 +1,7 @@
-import mongoose, { type ClientSession, Types } from "mongoose";
+import { type ClientSession, Types } from "mongoose";
 import { AppError } from "@/lib/api/response";
 import { connectToDatabase } from "@/lib/db/connection";
+import { withDatabaseTransaction } from "@/lib/db/transaction";
 import { AuditLog } from "@/models/AuditLog";
 import { Company } from "@/models/Company";
 import { Customer } from "@/models/Customer";
@@ -21,12 +22,12 @@ export interface StockAdjustmentInput {
   companyId: Types.ObjectId;
 }
 
-export async function recordStockAdjustment(input: StockAdjustmentInput, session: ClientSession | null = null): Promise<void> {
+export async function recordStockAdjustment(input: StockAdjustmentInput, session?: ClientSession | null): Promise<void> {
   await connectToDatabase();
   if (!Number.isInteger(input.quantity) || input.quantity <= 0) {
     throw new AppError({ status: 400, code: "INVALID_QUANTITY", message: "Quantity must be a positive integer" });
   }
-  const product = await Product.findOne({ _id: input.productId, companyId: input.companyId }).session(session);
+  const product = await Product.findOne({ _id: input.productId, companyId: input.companyId }).session(session ?? null);
   if (!product) throw new AppError({ status: 404, code: "PRODUCT_NOT_FOUND", message: "Product not found" });
 
   const addition = ["stock_addition", "opening_stock", "customer_return"].includes(input.movementType);
@@ -36,7 +37,7 @@ export async function recordStockAdjustment(input: StockAdjustmentInput, session
     throw new AppError({ status: 400, code: "INVALID_QUANTITY", message: "Stock quantity is too large" });
   }
   if (resultingQuantity < 0) {
-    const company = await Company.findById(input.companyId).select("settings.allowCustomNegativeStock").session(session);
+    const company = await Company.findById(input.companyId).select("settings.allowCustomNegativeStock").session(session ?? null);
     const allowNegative = input.movementType === "stock_adjustment" && company?.settings?.allowCustomNegativeStock === true;
     if (!allowNegative) throw new AppError({ status: 400, code: "INSUFFICIENT_STOCK", message: "Insufficient stock" });
   }
@@ -57,12 +58,10 @@ export interface CreateSaleInput {
 
 export async function createSale(input: CreateSaleInput): Promise<ISale> {
   await connectToDatabase();
-  const session = await mongoose.startSession();
-  try {
-    const sale = await session.withTransaction(async () => {
+  const sale = await withDatabaseTransaction(async (session) => {
       if (!input.items.length) throw new AppError({ status: 400, code: "EMPTY_SALE", message: "A sale needs at least one item" });
       if (!Number.isSafeInteger(input.amountPaid) || input.amountPaid < 0) throw new AppError({ status: 400, code: "INVALID_PAYMENT", message: "Payment must be a nonnegative amount in minor units" });
-      if (input.customerId && !await Customer.exists({ _id: input.customerId, companyId: input.companyId }).session(session)) {
+      if (input.customerId && !await Customer.exists({ _id: input.customerId, companyId: input.companyId }).session(session ?? null)) {
         throw new AppError({ status: 404, code: "CUSTOMER_NOT_FOUND", message: "Customer not found" });
       }
 
@@ -74,7 +73,7 @@ export async function createSale(input: CreateSaleInput): Promise<ISale> {
         if (!Number.isInteger(item.quantity) || item.quantity <= 0 || !Number.isSafeInteger(item.discount) || item.discount < 0) {
           throw new AppError({ status: 400, code: "INVALID_LINE_ITEM", message: "Invalid quantity or discount" });
         }
-        const product = await Product.findOne({ _id: item.productId, companyId: input.companyId, isArchived: false }).session(session);
+        const product = await Product.findOne({ _id: item.productId, companyId: input.companyId, isArchived: false }).session(session ?? null);
         if (!product) throw new AppError({ status: 404, code: "PRODUCT_NOT_FOUND", message: "Product not found" });
         if (!Number.isSafeInteger(product.sellingPrice) || product.sellingPrice < 0) {
           throw new AppError({ status: 409, code: "INVALID_PRICE", message: "Product price must be stored in integer minor units" });
@@ -94,7 +93,7 @@ export async function createSale(input: CreateSaleInput): Promise<ISale> {
 
       const grandTotal = subtotal - discountTotal;
       if (input.amountPaid > grandTotal) throw new AppError({ status: 400, code: "OVERPAYMENT", message: "Amount paid exceeds sale total" });
-      const company = await Company.findOneAndUpdate({ _id: input.companyId, status: "approved" }, { $inc: { saleCounter: 1 } }, { new: true, session });
+      const company = await Company.findOneAndUpdate({ _id: input.companyId, status: "approved" }, { $inc: { saleCounter: 1 } }, { returnDocument: "after", session });
       if (!company) throw new AppError({ status: 403, code: "COMPANY_NOT_APPROVED", message: "Company access is not approved" });
       const saleNumber = `SAL-${String(company.saleCounter).padStart(6, "0")}`;
       const outstandingBalance = grandTotal - input.amountPaid;
@@ -105,10 +104,9 @@ export async function createSale(input: CreateSaleInput): Promise<ISale> {
       }
       await AuditLog.create([{ userId: input.recordedBy, companyId: input.companyId, action: "sale.create", entityType: "Sale", entityId: saleId, metadata: { saleNumber, grandTotal, itemCount: items.length } }], { session });
       return created;
-    });
-    if (!sale) throw new Error("Sale transaction returned no document");
-    return sale;
-  } finally { await session.endSession(); }
+  });
+  if (!sale) throw new Error("Sale transaction returned no document");
+  return sale;
 }
 
 export interface RecordPaymentInput {
@@ -124,10 +122,8 @@ export interface RecordPaymentInput {
 
 export async function recordPayment(input: RecordPaymentInput) {
   await connectToDatabase();
-  const session = await mongoose.startSession();
-  try {
-    return await session.withTransaction(async () => {
-      const sale = await Sale.findOne({ _id: input.saleId, companyId: input.companyId }).session(session);
+  return await withDatabaseTransaction(async (session) => {
+      const sale = await Sale.findOne({ _id: input.saleId, companyId: input.companyId }).session(session ?? null);
       if (!sale) throw new AppError({ status: 404, code: "SALE_NOT_FOUND", message: "Sale not found" });
       if (sale.paymentStatus === "voided") throw new AppError({ status: 400, code: "SALE_VOIDED", message: "Cannot record payment on a voided sale" });
       if (!Number.isSafeInteger(input.amount) || input.amount <= 0 || input.amount > sale.outstandingBalance) {
@@ -140,19 +136,16 @@ export async function recordPayment(input: RecordPaymentInput) {
       const [payment] = await Payment.create([{ companyId: input.companyId, saleId: sale._id, customerId: sale.customerId ?? null, amount: input.amount, paymentDate: input.paymentDate, paymentMethod: input.paymentMethod, referenceNumber: input.referenceNumber ?? null, notes: input.notes ?? null, recordedBy: input.recordedBy }], { session });
       await AuditLog.create([{ userId: input.recordedBy, companyId: input.companyId, action: "payment.record", entityType: "Payment", entityId: payment._id, metadata: { saleId: sale._id, amount: input.amount } }], { session });
       return payment;
-    });
-  } finally { await session.endSession(); }
+  });
 }
 
 export async function voidSale(input: { companyId: Types.ObjectId; saleId: Types.ObjectId; voidedBy: Types.ObjectId; voidReason?: string | null }): Promise<void> {
   await connectToDatabase();
-  const session = await mongoose.startSession();
-  try {
-    await session.withTransaction(async () => {
-      const sale = await Sale.findOne({ _id: input.saleId, companyId: input.companyId }).session(session);
+  await withDatabaseTransaction(async (session) => {
+      const sale = await Sale.findOne({ _id: input.saleId, companyId: input.companyId }).session(session ?? null);
       if (!sale) throw new AppError({ status: 404, code: "SALE_NOT_FOUND", message: "Sale not found" });
       if (sale.paymentStatus === "voided") throw new AppError({ status: 400, code: "SALE_ALREADY_VOIDED", message: "Sale is already voided" });
-      const movements = await StockMovement.find({ companyId: input.companyId, referenceType: "sale", referenceId: sale._id, movementType: "sale_reduction" }).session(session);
+      const movements = await StockMovement.find({ companyId: input.companyId, referenceType: "sale", referenceId: sale._id, movementType: "sale_reduction" }).session(session ?? null);
       if (!movements.length) throw new AppError({ status: 409, code: "MISSING_MOVEMENTS", message: "Sale has no recorded stock movements" });
       for (const movement of movements) {
         await recordStockAdjustment({ companyId: input.companyId, productId: movement.productId, movementType: "customer_return", quantity: movement.quantity, referenceType: "return", referenceId: sale._id, userId: input.voidedBy }, session);
@@ -164,8 +157,7 @@ export async function voidSale(input: { companyId: Types.ObjectId; saleId: Types
       sale.voidReason = input.voidReason ?? null;
       await sale.save({ session });
       await AuditLog.create([{ userId: input.voidedBy, companyId: input.companyId, action: "sale.void", entityType: "Sale", entityId: sale._id, metadata: { saleNumber: sale.saleNumber, voidReason: input.voidReason } }], { session });
-    });
-  } finally { await session.endSession(); }
+  });
 }
 
 export async function getCustomerOutstandingBalance(companyId: Types.ObjectId, customerId: Types.ObjectId): Promise<number> {

@@ -1,10 +1,11 @@
 import bcrypt from "bcryptjs";
-import mongoose, { Types } from "mongoose";
+import { Types } from "mongoose";
 import { defineRoute } from "@/lib/api/define-route";
 import { AppError, createdResponse } from "@/lib/api/response";
 import { clientAddress, limitRate } from "@/lib/auth/rate-limit";
 import { deleteImage, getCompanyFolder, uploadImage, validateFile } from "@/lib/cloudinary";
 import { connectToDatabase } from "@/lib/db/connection";
+import { withDatabaseTransaction } from "@/lib/db/transaction";
 import { applicationReceivedEmail, sendEmail } from "@/lib/email";
 import { companyRegistrationSchema } from "@/lib/validation/schemas";
 import { AuditLog } from "@/models/AuditLog";
@@ -29,9 +30,8 @@ export const POST = defineRoute(
       logo = { publicId: uploaded.publicId, url: uploaded.secureUrl };
     }
     const password = await bcrypt.hash(body.password, 12);
-    const session = await mongoose.startSession();
     try {
-      await session.withTransaction(async () => {
+      await withDatabaseTransaction(async (session) => {
         await Company.create([{ _id: companyId, name: body.name, email, status: "pending", contactNumber: body.contactNumber ?? null, businessAddress: body.businessAddress ?? null, isEmailVerified: false, userCount: 1, productCount: 0, logo }], { session });
         const [user] = await User.create([{ email, password, firstName: body.name.split(" ")[0] || "Admin", lastName: body.name.split(" ").slice(1).join(" ") || "User", role: "company_admin", companyId, isActive: false, emailVerified: false, sessionVersion: 1 }], { session });
         await AuditLog.create([{ userId: user._id, companyId, userEmail: email, userRole: "company_admin", action: "company.register", entityType: "Company", entityId: companyId, metadata: { status: "pending" } }], { session });
@@ -43,7 +43,7 @@ export const POST = defineRoute(
         catch (cleanupError) { console.error(`[${correlationId}] Logo cleanup failed`, cleanupError); }
       }
       throw error;
-    } finally { await session.endSession(); }
+    }
     try { await sendEmail(applicationReceivedEmail(body.name, email)); }
     catch (error) {
       console.error(`[${correlationId}] Registration saved but confirmation email failed`, error);

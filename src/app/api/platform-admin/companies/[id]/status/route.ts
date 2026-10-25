@@ -1,9 +1,10 @@
-import mongoose, { Types } from "mongoose";
+import { Types } from "mongoose";
 import { appConfig } from "@/config/app.config";
 import { defineRoute } from "@/lib/api/define-route";
 import { AppError, successResponse } from "@/lib/api/response";
 import { createToken } from "@/lib/auth/tokens";
 import { companyApprovedEmail, companyReactivatedEmail, companyRejectedEmail, companySuspendedEmail, sendEmail } from "@/lib/email";
+import { withDatabaseTransaction } from "@/lib/db/transaction";
 import { companyStatusUpdateSchema } from "@/lib/validation/schemas";
 import { AccountActivationToken } from "@/models/AccountActivationToken";
 import { AuditLog } from "@/models/AuditLog";
@@ -13,11 +14,9 @@ import { User } from "@/models/User";
 export const POST = defineRoute(
   { scope: "platform", roles: ["platform_admin"], bodySchema: companyStatusUpdateSchema },
   async (request, { auth, body, params, correlationId }) => {
-    const session = await mongoose.startSession();
     let transition: { companyName: string; email: string; previous: CompanyStatus; token: string | null } | null = null;
-    try {
-      transition = await session.withTransaction(async () => {
-        const company = await Company.findById(params.id).session(session);
+    transition = await withDatabaseTransaction(async (session) => {
+        const company = await Company.findById(params.id).session(session ?? null);
         if (!company) throw new AppError({ status: 404, code: "NOT_FOUND", message: "Company not found" });
         if (company.status === body.status) return null;
         const previous = company.status;
@@ -47,7 +46,7 @@ export const POST = defineRoute(
 
         let token: string | null = null;
         if (body.status === "approved" && previous !== "suspended") {
-          const admin = await User.findOneAndUpdate({ companyId: company._id, role: "company_admin" }, { $set: { isActive: true } }, { new: true, session });
+          const admin = await User.findOneAndUpdate({ companyId: company._id, role: "company_admin" }, { $set: { isActive: true } }, { returnDocument: "after", session });
           if (!admin) throw new AppError({ status: 409, code: "ADMIN_MISSING", message: "Company administrator is missing" });
           await AccountActivationToken.updateMany({ userId: admin._id, isUsed: false }, { $set: { isUsed: true } }, { session });
           const issued = createToken();
@@ -56,8 +55,7 @@ export const POST = defineRoute(
         }
         await AuditLog.create([{ userId: new Types.ObjectId(auth!.userId), userEmail: auth!.userEmail, userRole: "platform_admin", companyId: company._id, action: `company.${body.status}`, entityType: "Company", entityId: company._id, metadata: { previousStatus: previous, newStatus: body.status, reason: body.reason ?? null }, ipAddress: request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip"), userAgent: request.headers.get("user-agent") }], { session });
         return { companyName: company.name, email: company.email, previous, token };
-      });
-    } finally { await session.endSession(); }
+    });
 
     if (!transition) return successResponse(null, `Company is already ${body.status}`);
     const { companyName, email, previous, token } = transition;

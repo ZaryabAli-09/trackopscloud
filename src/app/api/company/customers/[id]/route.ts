@@ -27,7 +27,7 @@ export const PATCH = defineRoute(
   { scope: "company", roles: ["company_admin"], bodySchema: customerUpdateSchema },
   async (_request, { auth, params, body }) => {
     if (!Object.keys(body).length) throw new AppError({ status: 400, code: "VALIDATION_ERROR", message: "At least one field is required" });
-    const customer = await Customer.findOneAndUpdate({ _id: params.id, companyId: auth!.companyId }, { $set: body }, { new: true, runValidators: true });
+    const customer = await Customer.findOneAndUpdate({ _id: params.id, companyId: auth!.companyId }, { $set: body }, { returnDocument: "after", runValidators: true });
     if (!customer) throw new AppError({ status: 404, code: "NOT_FOUND", message: "Customer not found" });
     await AuditLog.create({ userId: new Types.ObjectId(auth!.userId), companyId: new Types.ObjectId(auth!.companyId!), action: "customer.update", entityType: "Customer", entityId: customer._id });
     return successResponse(customer, "Customer updated successfully");
