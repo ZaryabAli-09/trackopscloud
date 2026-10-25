@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { withAuth } from "@/lib/permissions";
-import { errorResponse, successResponse } from "@/lib/api/response";
+import { errorResponse, successResponse, handleError } from "@/lib/api/response";
 import { paginationSchema } from "@/lib/validation/schemas";
 import { Company } from "@/models/Company";
 import { User } from "@/models/User";
@@ -14,7 +14,7 @@ const querySchema = z.object({
   search: z.string().optional(),
 });
 
-async function handler(req: NextRequest, ctx: any) {
+async function handler(req: NextRequest, ctx: import("@/lib/permissions").AuthorizedRequestContext, context: { params: Promise<{ [key: string]: string }> }) {
   if (ctx.userRole !== "platform_admin") {
     return errorResponse({ status: 403, code: "FORBIDDEN", message: "Platform admin access required" });
   }
@@ -30,7 +30,7 @@ async function handler(req: NextRequest, ctx: any) {
       search: searchParams.get("search"),
     });
 
-    const filter: any = {};
+    const filter: { status?: string; $or?: { [key: string]: { $regex: string; $options: string } }[] | undefined } = {};
     if (query.status) filter.status = query.status;
     if (query.search) {
       filter.$or = [
@@ -40,25 +40,25 @@ async function handler(req: NextRequest, ctx: any) {
     }
 
     const [companies, total] = await Promise.all([
-      Company.find(filter)
+      Company.find(filter as any)
         .sort({ createdAt: -1 })
         .skip((query.page - 1) * query.limit)
         .limit(query.limit)
         .lean(),
-      Company.countDocuments(filter),
+      Company.countDocuments(filter as any),
     ]);
 
     // Get user counts for each company
-    const companyIds = companies.map((c: any) => c._id);
+    const companyIds = (companies as { _id: import("mongoose").Types.ObjectId }[]).map((c) => c._id);
     const userCounts = await User.aggregate([
       { $match: { companyId: { $in: companyIds } } },
       { $group: { _id: "$companyId", count: { $sum: 1 } } },
     ]);
-    const userCountMap = new Map(userCounts.map((u: any) => [u._id.toString(), u.count]));
+    const userCountMap = new Map(userCounts.map((u: { _id: string; count: number }) => [u._id.toString(), u.count]));
 
     const data = companies.map((company: any) => ({
       ...company,
-      userCount: userCountMap.get(company._id.toString()) || 0,
+      userCount: userCountMap.get((company._id as import("mongoose").Types.ObjectId).toString()) || 0,
     }));
 
     return successResponse({
@@ -71,8 +71,8 @@ async function handler(req: NextRequest, ctx: any) {
       },
     }, "Companies retrieved successfully");
   } catch (error) {
-    throw error;
+    return handleError(error, "unknown");
   }
 }
 
-export const GET = withAuth(handler as any) as any;
+export const GET = withAuth(handler);

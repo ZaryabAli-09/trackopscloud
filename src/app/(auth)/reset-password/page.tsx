@@ -2,6 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
+import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -11,13 +12,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Lock } from "lucide-react";
 
 const resetSchema = z.object({
   token: z.string().min(1),
   password: z.string().min(8, "Password must be at least 8 characters"),
 });
 
-export default function ResetPasswordPage() {
+function ResetPasswordContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token") || "";
   const [message, setMessage] = useState<string | null>(null);
@@ -69,6 +71,7 @@ export default function ResetPasswordPage() {
               </div>
               <input type="hidden" {...form.register("token")} />
               <Button type="submit" className="w-full" disabled={!token}>
+                <Lock className="h-4 w-4 mr-2" />
                 Reset Password
               </Button>
             </form>
@@ -84,5 +87,13 @@ export default function ResetPasswordPage() {
         </CardFooter>
       </Card>
     </div>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={null}>
+      <ResetPasswordContent />
+    </Suspense>
   );
 }

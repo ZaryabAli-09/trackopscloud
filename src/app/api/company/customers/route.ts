@@ -5,7 +5,7 @@ import { Customer } from "@/models/Customer";
 import { connectToDatabase } from "@/lib/db/connection";
 import { customerSchema, customerUpdateSchema, paginationSchema } from "@/lib/validation/schemas";
 
-async function handler(req: NextRequest, ctx: any) {
+async function handler(req: NextRequest, ctx: import("@/lib/permissions").AuthorizedRequestContext, context: { params: Promise<{ [key: string]: string }> }) {
   try {
     await connectToDatabase();
 
@@ -15,7 +15,7 @@ async function handler(req: NextRequest, ctx: any) {
       limit: searchParams.get("limit"),
     });
 
-    const filter: any = { companyId: ctx.companyId };
+    const filter: { companyId: string } = { companyId: ctx.companyId || "" };
 
     const [customers, total] = await Promise.all([
       Customer.find(filter)
@@ -35,18 +35,18 @@ async function handler(req: NextRequest, ctx: any) {
   }
 }
 
-async function postHandler(req: NextRequest, ctx: any) {
+async function postHandler(req: NextRequest, ctx: import("@/lib/permissions").AuthorizedRequestContext, context: { params: Promise<{ [key: string]: string }> }) {
   try {
     await connectToDatabase();
     const body = await req.json();
     const validated = customerSchema.parse(body);
 
-    const customer = await Customer.create({ ...validated, companyId: ctx.companyId });
+    const customer = await Customer.create({ ...validated, companyId: ctx.companyId || "" });
     return createdResponse(customer, "Customer created successfully");
   } catch (error) {
     throw error;
   }
 }
 
-export const GET = withAuth(handler as any) as any;
-export const POST = withAuth(postHandler as any) as any;
+export const GET = withAuth(handler);
+export const POST = withAuth(postHandler);

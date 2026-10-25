@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useState } from "react";
+import { useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -17,7 +17,7 @@ const activateSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters"),
 });
 
-export default function ActivatePage() {
+function ActivateContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token") || "";
   const [message, setMessage] = useState<string | null>(null);
@@ -84,5 +84,13 @@ export default function ActivatePage() {
         </CardFooter>
       </Card>
     </div>
+  );
+}
+
+export default function ActivatePage() {
+  return (
+    <Suspense fallback={null}>
+      <ActivateContent />
+    </Suspense>
   );
 }

@@ -1,21 +1,22 @@
 import { NextRequest } from "next/server";
 import { withAuth } from "@/lib/permissions";
-import { errorResponse, successResponse } from "@/lib/api/response";
+import { errorResponse, successResponse, handleError } from "@/lib/api/response";
 import { Product } from "@/models/Product";
 import { connectToDatabase } from "@/lib/db/connection";
 import { productUpdateSchema } from "@/lib/validation/schemas";
 
-async function handler(req: NextRequest, ctx: any, { params }: { params: { id: string } }) {
+async function handler(req: NextRequest, ctx: import("@/lib/permissions").AuthorizedRequestContext, context: { params: Promise<{ [key: string]: string }> }) {
   try {
     await connectToDatabase();
+    const { id } = await context.params;
 
-    const product = await Product.findOne({ _id: params.id, companyId: ctx.companyId });
+    const product = await Product.findOne({
+      _id: id,
+      companyId: ctx.companyId || "",
+      isArchived: false,
+    });
     if (!product) {
       return errorResponse({ status: 404, code: "NOT_FOUND", message: "Product not found" });
-    }
-
-    if (req.method === "GET") {
-      return successResponse(product, "Product retrieved successfully");
     }
 
     if (req.method === "PUT") {
@@ -24,9 +25,9 @@ async function handler(req: NextRequest, ctx: any, { params }: { params: { id: s
 
       if (validated.sku) {
         const existing = await Product.findOne({
-          companyId: ctx.companyId,
+          companyId: ctx.companyId || "",
           sku: validated.sku.toUpperCase(),
-          _id: { $ne: params.id },
+          _id: { $ne: id },
           isArchived: false,
         });
         if (existing) {
@@ -39,26 +40,34 @@ async function handler(req: NextRequest, ctx: any, { params }: { params: { id: s
         validated.sku = validated.sku.toUpperCase();
       }
 
-      const updated = await Product.findByIdAndUpdate(params.id, validated, { new: true });
+      const updated = await Product.findByIdAndUpdate(
+        { _id: id, companyId: ctx.companyId || "" },
+        { ...validated, updatedAt: new Date() },
+        { new: true }
+      );
       return successResponse(updated, "Product updated successfully");
     }
 
     if (req.method === "DELETE") {
-      await Product.findByIdAndUpdate(params.id, { isArchived: true });
-      return successResponse(null, "Product archived successfully");
+      const deleted = await Product.findOneAndUpdate(
+        { _id: id, companyId: ctx.companyId || "", isArchived: false },
+        { isArchived: true, updatedAt: new Date() },
+        { new: true }
+      );
+
+      if (!deleted) {
+        return errorResponse({ status: 404, code: "NOT_FOUND", message: "Product not found" });
+      }
+
+      return successResponse(null, "Product soft-deleted successfully");
     }
 
-    return errorResponse({ status: 405, code: "METHOD_NOT_ALLOWED", message: "Method not allowed" });
+    return successResponse(product, "Product retrieved successfully");
   } catch (error) {
-    if (error instanceof Error) {
-      if (error.name === "CastError") {
-        return errorResponse({ status: 400, code: "INVALID_ID", message: "Invalid product ID" });
-      }
-    }
-    throw error;
+    return handleError(error, "unknown");
   }
 }
 
-export const GET = withAuth(handler as any) as any;
-export const PUT = withAuth(handler as any) as any;
-export const DELETE = withAuth(handler as any) as any;
+export const GET = withAuth(handler);
+export const PUT = withAuth(handler);
+export const DELETE = withAuth(handler);

@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
 import { withAuth } from "@/lib/permissions";
-import { errorResponse, successResponse } from "@/lib/api/response";
+import { errorResponse, successResponse, handleError } from "@/lib/api/response";
 import { StockMovement } from "@/models/StockMovement";
 import { connectToDatabase } from "@/lib/db/connection";
 import { paginationSchema } from "@/lib/validation/schemas";
 
-async function handler(req: NextRequest, ctx: any) {
+async function handler(req: NextRequest, ctx: import("@/lib/permissions").AuthorizedRequestContext, context: { params: Promise<{ [key: string]: string }> }) {
   try {
     await connectToDatabase();
 
@@ -15,7 +15,7 @@ async function handler(req: NextRequest, ctx: any) {
       limit: searchParams.get("limit"),
     });
 
-    const filter: any = { companyId: ctx.companyId };
+    const filter: { companyId: string } = { companyId: ctx.companyId || "" };
 
     const [movements, total] = await Promise.all([
       StockMovement.find(filter)
@@ -33,8 +33,8 @@ async function handler(req: NextRequest, ctx: any) {
       meta: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) },
     }, "Stock movements retrieved successfully");
   } catch (error) {
-    throw error;
+    return handleError(error, "unknown");
   }
 }
 
-export const GET = withAuth(handler as any) as any;
+export const GET = withAuth(handler);

@@ -1,18 +1,18 @@
 import { NextRequest } from "next/server";
 import { withAuth } from "@/lib/permissions";
-import { errorResponse, successResponse } from "@/lib/api/response";
+import { errorResponse, successResponse, handleError } from "@/lib/api/response";
 import { Company } from "@/models/Company";
 import { User } from "@/models/User";
 import { AccountActivationToken } from "@/models/AccountActivationToken";
 import { AuditLog } from "@/models/AuditLog";
 import { connectToDatabase } from "@/lib/db/connection";
-import bcrypt from "bcryptjs";
 import * as crypto from "crypto";
 import { companyStatusUpdateSchema } from "@/lib/validation/schemas";
 import { sendEmail, companyApprovedEmail, companyRejectedEmail, companySuspendedEmail, companyReactivatedEmail } from "@/lib/email";
 import { appConfig } from "@/config/app.config";
+import { Types } from "mongoose";
 
-async function handler(req: NextRequest, ctx: any, { params }: { params: { id: string } }) {
+async function handler(req: NextRequest, ctx: import("@/lib/permissions").AuthorizedRequestContext, context: { params: Promise<{ [key: string]: string }> }) {
   if (ctx.userRole !== "platform_admin") {
     return errorResponse({ status: 403, code: "FORBIDDEN", message: "Platform admin access required" });
   }
@@ -20,7 +20,8 @@ async function handler(req: NextRequest, ctx: any, { params }: { params: { id: s
   try {
     await connectToDatabase();
 
-    const company = await Company.findById(params.id);
+    const { id } = await context.params;
+    const company = await Company.findById(id);
     if (!company) {
       return errorResponse({ status: 404, code: "NOT_FOUND", message: "Company not found" });
     }
@@ -37,19 +38,19 @@ async function handler(req: NextRequest, ctx: any, { params }: { params: { id: s
 
     if (status === "approved") {
       company.approvedAt = new Date();
-      company.approvedBy = ctx.userId;
+      company.approvedBy = ctx.userId ? new Types.ObjectId(ctx.userId) : undefined;
       company.rejectionReason = null;
       company.rejectedAt = null;
       company.rejectedBy = null;
     } else if (status === "rejected") {
       company.rejectedAt = new Date();
-      company.rejectedBy = ctx.userId;
+      company.rejectedBy = ctx.userId ? new Types.ObjectId(ctx.userId) : undefined;
       company.rejectionReason = rejectionReason ?? null;
       company.approvedAt = null;
       company.approvedBy = null;
     } else if (status === "suspended") {
       company.suspendedAt = new Date();
-      company.suspendedBy = ctx.userId;
+      company.suspendedBy = ctx.userId ? new Types.ObjectId(ctx.userId) : undefined;
       company.suspensionReason = rejectionReason ?? null;
     } else if (status === "pending") {
       // Reactivate from rejected/suspended to pending
@@ -110,8 +111,8 @@ async function handler(req: NextRequest, ctx: any, { params }: { params: { id: s
 
     return successResponse(null, `Company ${status} successfully`);
   } catch (error) {
-    throw error;
+    return handleError(error, "unknown");
   }
 }
 
-export const POST = withAuth(handler as any) as any;
+export const POST = withAuth(handler);

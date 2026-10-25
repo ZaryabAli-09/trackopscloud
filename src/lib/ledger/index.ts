@@ -1,9 +1,8 @@
 import { Types, ClientSession } from "mongoose";
 import { Product } from "@/models/Product";
-import { Sale } from "@/models/Sale";
+import { Sale, ISale } from "@/models/Sale";
 import { Payment } from "@/models/Payment";
 import { StockMovement } from "@/models/StockMovement";
-import { Customer } from "@/models/Customer";
 import { AuditLog } from "@/models/AuditLog";
 import { connectToDatabase } from "@/lib/db/connection";
 import { AppError } from "@/lib/api/response";
@@ -98,12 +97,12 @@ export interface CreateSaleInput {
   saleDate: Date;
 }
 
-export async function createSale(input: CreateSaleInput): Promise<any> {
+export async function createSale(input: CreateSaleInput): Promise<ISale | null> {
   await connectToDatabase();
   const session = await mongooseSession();
   try {
     await session.withTransaction(async () => {
-      const validatedItems: any[] = [];
+      const validatedItems: Array<{ productId: Types.ObjectId; productName: string; sku: string; quantity: number; unitPrice: number; discount: number; lineTotal: number }> = [];
       let subtotal = 0;
       let discountTotal = 0;
 
@@ -135,7 +134,7 @@ export async function createSale(input: CreateSaleInput): Promise<any> {
       await StockMovement.updateMany({ companyId: input.companyId, referenceType: "sale", userId: input.recordedBy, createdAt: { $gte: new Date(Date.now() - 60000) } }, { $set: { referenceId: saleDoc._id } }, { session });
 
       if (input.customerId && input.amountPaid > 0) {
-        await Payment.create([{ companyId: input.companyId, saleId: saleDoc._id, customerId: input.customerId, amount: input.amountPaid, paymentDate: input.saleDate, paymentMethod: "cash", recordedBy: input.recordedBy }], { session });
+        await Payment.create([{ companyId: input.companyId, saleId: saleDoc._id, customerId: input.customerId, amount: input.amountPaid, paymentDate: input.saleDate, paymentMethod: "cash", referenceNumber: null, notes: null, recordedBy: input.recordedBy }], { session });
       }
 
       await AuditLog.create([{ userId: input.recordedBy, companyId: input.companyId, action: "sale.create", entityType: "Sale", entityId: saleDoc._id, metadata: { saleNumber, grandTotal, itemCount: validatedItems.length } }], { session });
@@ -155,7 +154,7 @@ async function mongooseSession(): Promise<ClientSession> {
   return await mongoose.startSession();
 }
 
-export async function recordPayment(input: { companyId: Types.ObjectId; saleId: Types.ObjectId; customerId: Types.ObjectId; amount: number; paymentDate: Date; paymentMethod: string; referenceNumber?: string | null; notes?: string | null; recordedBy: Types.ObjectId }): Promise<void> {
+export async function recordPayment(input: { companyId: Types.ObjectId; saleId: Types.ObjectId; customerId: Types.ObjectId; amount: number; paymentDate: Date; paymentMethod: "cash" | "bank_transfer" | "check" | "mobile_money" | "other"; referenceNumber?: string | null; notes?: string | null; recordedBy: Types.ObjectId }): Promise<void> {
   await connectToDatabase();
   const session = await mongooseSession();
   try {
@@ -172,7 +171,7 @@ export async function recordPayment(input: { companyId: Types.ObjectId; saleId: 
       if (newOutstandingBalance === 0) newPaymentStatus = "paid";
       else if (newAmountPaid > 0) newPaymentStatus = "partial";
       await Sale.findByIdAndUpdate(input.saleId, { amountPaid: newAmountPaid, outstandingBalance: newOutstandingBalance, paymentStatus: newPaymentStatus }, { session });
-      await Payment.create([{ companyId: input.companyId, saleId: input.saleId, customerId: input.customerId, amount: input.amount, paymentDate: input.paymentDate, paymentMethod: input.paymentMethod as any, referenceNumber: input.referenceNumber ?? null, notes: input.notes ?? null, recordedBy: input.recordedBy }], { session });
+      await Payment.create([{ companyId: input.companyId, saleId: input.saleId, customerId: input.customerId, amount: input.amount, paymentDate: input.paymentDate, paymentMethod: input.paymentMethod, referenceNumber: input.referenceNumber ?? null, notes: input.notes ?? null, recordedBy: input.recordedBy }], { session });
       await AuditLog.create([{ userId: input.recordedBy, companyId: input.companyId, action: "payment.record", entityType: "Payment", entityId: new Types.ObjectId(), metadata: { saleId: input.saleId, amount: input.amount, newOutstandingBalance } }], { session });
     });
   } finally { await session.endSession(); }

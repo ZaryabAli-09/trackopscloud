@@ -1,27 +1,26 @@
-import nodemailer, { type Transporter } from "nodemailer";
+import nodemailer from "nodemailer";
+import type { Transporter } from "nodemailer";
 import { serverEnv } from "@/config/app.config";
 import { appConfig } from "@/config/app.config";
 
 let transporter: Transporter | null = null;
 
-function getTransporter(): Transporter {
+async function getTransporter(): Promise<Transporter> {
   if (transporter) return transporter;
 
-  if (!serverEnv.SMTP_HOST || !serverEnv.SMTP_USER || !serverEnv.SMTP_PASS) {
-    throw new Error("SMTP is not configured");
+  if (!serverEnv.GMAIL_SMTP_EMAIL || !serverEnv.GMAIL_SMTP_APP_PASSWORD) {
+    throw new Error("Gmail SMTP is not configured");
   }
 
   transporter = nodemailer.createTransport({
-    host: serverEnv.SMTP_HOST,
-    port: parseInt(serverEnv.SMTP_PORT || "587", 10),
-    secure: parseInt(serverEnv.SMTP_PORT || "587", 10) === 465,
-    auth: {
-      user: serverEnv.SMTP_USER,
-      pass: serverEnv.SMTP_PASS,
-    },
-  });
+      service: "gmail",
+      auth: {
+        user: process.env.GMAIL_SMTP_EMAIL!,
+        pass: process.env.GMAIL_SMTP_APP_PASSWORD!,
+      },
+    });
 
-  return transporter;
+  return transporter!;
 }
 
 export interface EmailOptions {
@@ -33,15 +32,15 @@ export interface EmailOptions {
 
 export async function sendEmail(options: EmailOptions): Promise<void> {
   const smtpConfigured =
-    serverEnv.SMTP_HOST && serverEnv.SMTP_USER && serverEnv.SMTP_PASS;
+    serverEnv.GMAIL_SMTP_EMAIL && serverEnv.GMAIL_SMTP_APP_PASSWORD;
 
   if (!smtpConfigured) {
-    console.warn("⚠️ SMTP not configured - email would be sent:", options.subject, "to", options.to);
+    console.warn("⚠️ Gmail SMTP not configured - email would be sent:", options.subject, "to", options.to);
     return;
   }
 
   try {
-    const transport = getTransporter();
+    const transport = await getTransporter();
     await transport.sendMail({
       from: serverEnv.SMTP_FROM || `"TrackOpsCloud" <noreply@trackopscloud.example.com>`,
       to: options.to,

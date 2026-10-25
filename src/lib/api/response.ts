@@ -120,19 +120,21 @@ export function handleError(error: unknown, correlationId: string): NextResponse
   if (error instanceof Error) {
     // Handle common Mongoose errors
     if (error.name === "ValidationError") {
+      const e = error as Error & { errors?: Record<string, { message: string }>; keyValue?: Record<string, unknown> };
       return errorResponse({
         status: 400,
         code: "VALIDATION_ERROR",
         message: "Validation failed",
-        details: Object.entries((error as any).errors || {}).map(([key, val]: [string, any]) => ({
+        details: Object.entries(e.errors || {}).map(([key, val]: [string, { message: string }]) => ({
           path: key,
           message: val.message || "Invalid value",
         })),
       });
     }
 
-    if (error.name === "MongoServerError" && (error as any).code === 11000) {
-      const duplicateKey = Object.keys((error as any).keyValue || {}).join(", ");
+    if (error.name === "MongoServerError" && (error as Error & { code?: number }).code === 11000) {
+      const e = error as Error & { keyValue?: Record<string, unknown> };
+      const duplicateKey = Object.keys(e.keyValue || {}).join(", ");
       return errorResponse({
         status: 409,
         code: "DUPLICATE_ERROR",

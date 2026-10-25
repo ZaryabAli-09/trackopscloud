@@ -40,7 +40,7 @@ export default function RegisterPage() {
 
     alert(data.message || "Registration submitted successfully");
     if (typeof window !== "undefined") {
-      window.location.href = "/auth/login";
+      window.location.replace("/auth/login");
     }
   }
 

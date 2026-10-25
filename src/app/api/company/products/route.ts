@@ -1,12 +1,12 @@
 import { NextRequest } from "next/server";
 import { withAuth } from "@/lib/permissions";
-import { errorResponse, successResponse, createdResponse, handleError, withCorrelationId } from "@/lib/api/response";
+import { errorResponse, successResponse, createdResponse, handleError } from "@/lib/api/response";
 import { Product } from "@/models/Product";
 import { connectToDatabase } from "@/lib/db/connection";
 import { productSchema, productUpdateSchema, paginationSchema } from "@/lib/validation/schemas";
 import { z } from "zod";
 
-async function handler(req: NextRequest, ctx: any) {
+async function handler(req: NextRequest, ctx: import("@/lib/permissions").AuthorizedRequestContext, context: { params: Promise<{ [key: string]: string }> }) {
   try {
     await connectToDatabase();
 
@@ -20,8 +20,8 @@ async function handler(req: NextRequest, ctx: any) {
 
     const includeArchived = searchParams.get("includeArchived") === "true";
 
-    const filter: any = {
-      companyId: ctx.companyId,
+    const filter: { companyId: string; isArchived?: boolean } = {
+      companyId: ctx.companyId || "",
     };
     if (!includeArchived) {
       filter.isArchived = false;
@@ -50,7 +50,7 @@ async function handler(req: NextRequest, ctx: any) {
   }
 }
 
-async function postHandler(req: NextRequest, ctx: any) {
+async function postHandler(req: NextRequest, ctx: import("@/lib/permissions").AuthorizedRequestContext, context: { params: Promise<{ [key: string]: string }> }) {
   try {
     await connectToDatabase();
 
@@ -59,7 +59,7 @@ async function postHandler(req: NextRequest, ctx: any) {
 
     // Check for duplicate SKU within company
     const existing = await Product.findOne({
-      companyId: ctx.companyId,
+      companyId: ctx.companyId || "",
       sku: validated.sku.toUpperCase(),
       isArchived: false,
     });
@@ -74,7 +74,7 @@ async function postHandler(req: NextRequest, ctx: any) {
     const product = await Product.create({
       ...validated,
       sku: validated.sku.toUpperCase(),
-      companyId: ctx.companyId,
+      companyId: ctx.companyId || "",
     });
 
     return createdResponse(product, "Product created successfully");
@@ -83,5 +83,5 @@ async function postHandler(req: NextRequest, ctx: any) {
   }
 }
 
-export const GET = withAuth(handler as any) as any;
-export const POST = withAuth(postHandler as any) as any;
+export const GET = withAuth(handler);
+export const POST = withAuth(postHandler);

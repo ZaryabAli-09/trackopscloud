@@ -1,13 +1,13 @@
 import { NextRequest } from "next/server";
 import { withAuth } from "@/lib/permissions";
-import { errorResponse, successResponse, createdResponse } from "@/lib/api/response";
+import { errorResponse, successResponse, createdResponse, handleError } from "@/lib/api/response";
 import { createSale } from "@/lib/ledger";
 import { saleSchema, paginationSchema } from "@/lib/validation/schemas";
 import { Sale } from "@/models/Sale";
 import { connectToDatabase } from "@/lib/db/connection";
 import { Types } from "mongoose";
 
-async function handler(req: NextRequest, ctx: any) {
+async function handler(req: NextRequest, ctx: import("@/lib/permissions").AuthorizedRequestContext, context: { params: Promise<{ [key: string]: string }> }) {
   try {
     await connectToDatabase();
 
@@ -17,7 +17,7 @@ async function handler(req: NextRequest, ctx: any) {
       limit: searchParams.get("limit"),
     });
 
-    const filter: any = { companyId: ctx.companyId };
+    const filter: { companyId: string } = { companyId: ctx.companyId || "" };
 
     const [sales, total] = await Promise.all([
       Sale.find(filter)
@@ -35,20 +35,20 @@ async function handler(req: NextRequest, ctx: any) {
       meta: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) },
     }, "Sales retrieved successfully");
   } catch (error) {
-    throw error;
+    return handleError(error, "unknown");
   }
 }
 
-async function postHandler(req: NextRequest, ctx: any) {
+async function postHandler(req: NextRequest, ctx: import("@/lib/permissions").AuthorizedRequestContext, context: { params: Promise<{ [key: string]: string }> }) {
   try {
     await connectToDatabase();
     const body = await req.json();
     const validated = saleSchema.parse(body);
 
     const sale = await createSale({
-      companyId: new Types.ObjectId(ctx.companyId as string),
+      companyId: new Types.ObjectId(ctx.companyId || ""),
       customerId: validated.customerId ? new Types.ObjectId(validated.customerId) : null,
-      items: validated.items.map((item: any) => ({
+      items: validated.items.map((item: { productId: string; productName: string; sku: string; quantity: number; unitPrice: number; discount: number }) => ({
         productId: new Types.ObjectId(item.productId),
         productName: item.productName,
         sku: item.sku,
@@ -59,15 +59,19 @@ async function postHandler(req: NextRequest, ctx: any) {
       paymentStatus: validated.paymentStatus,
       amountPaid: validated.amountPaid,
       notes: validated.notes,
-      recordedBy: new Types.ObjectId(ctx.userId as string),
+      recordedBy: new Types.ObjectId(ctx.userId || ""),
       saleDate: new Date(),
     });
 
+    if (!sale) {
+      return errorResponse({ status: 500, code: "INTERNAL_ERROR", message: "Failed to record sale" });
+    }
+
     return createdResponse(sale, "Sale recorded successfully");
   } catch (error) {
-    throw error;
+    return handleError(error, "unknown");
   }
 }
 
-export const GET = withAuth(handler as any) as any;
-export const POST = withAuth(postHandler as any) as any;
+export const GET = withAuth(handler);
+export const POST = withAuth(postHandler);

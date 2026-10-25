@@ -6,6 +6,12 @@ import { connectToDatabase } from "@/lib/db/connection";
 import { serverEnv } from "@/config/app.config";
 import { Role, CompanyStatus } from "@/types";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type JWTContent = Record<string, any>;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SessionContent = Record<string, any>;
+
 export const authConfig = {
   providers: [
     CredentialsProvider({
@@ -69,23 +75,23 @@ export const authConfig = {
     maxAge: 60 * 24 * 60 * 60, // 60 days
   },
   callbacks: {
-    async jwt({ token, user }: any) {
+    async jwt({ token, user }: { token: JWTContent; user: Record<string, unknown> | null }) {
       if (user) {
         token.id = user.id;
         token.email = user.email;
-        token.role = user.role;
-        token.companyId = user.companyId;
-        token.companyStatus = user.companyStatus;
-        token.sessionVersion = user.sessionVersion;
+        token.role = (user.role as Role) || "user";
+        token.companyId = (user as { companyId: string | null }).companyId ?? null;
+        token.companyStatus = (user as { companyStatus: CompanyStatus | null }).companyStatus ?? null;
+        token.sessionVersion = (user as { sessionVersion: number }).sessionVersion ?? 1;
       }
       return token;
     },
-    async session({ session, token }: any) {
+    async session({ session, token }: { session: SessionContent; token: JWTContent }) {
       if (session.user) {
         session.user.id = token.id as string;
-        session.user.role = token.role as string;
+        session.user.role = token.role as Role;
         session.user.companyId = token.companyId as string | null;
-        session.user.companyStatus = token.companyStatus as string | null;
+        session.user.companyStatus = token.companyStatus as CompanyStatus | null;
         session.user.sessionVersion = token.sessionVersion as number;
       }
       return session;

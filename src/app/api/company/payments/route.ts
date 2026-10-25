@@ -7,7 +7,7 @@ import { Payment } from "@/models/Payment";
 import { connectToDatabase } from "@/lib/db/connection";
 import { Types } from "mongoose";
 
-async function handler(req: NextRequest, ctx: any) {
+async function handler(req: NextRequest, ctx: import("@/lib/permissions").AuthorizedRequestContext, context: { params: Promise<{ [key: string]: string }> }) {
   try {
     await connectToDatabase();
 
@@ -17,7 +17,7 @@ async function handler(req: NextRequest, ctx: any) {
       limit: searchParams.get("limit"),
     });
 
-    const filter: any = { companyId: ctx.companyId };
+    const filter: { companyId: string } = { companyId: ctx.companyId || "" };
 
     const [payments, total] = await Promise.all([
       Payment.find(filter)
@@ -40,14 +40,15 @@ async function handler(req: NextRequest, ctx: any) {
   }
 }
 
-async function postHandler(req: NextRequest, ctx: any) {
+async function postHandler(req: NextRequest, ctx: import("@/lib/permissions").AuthorizedRequestContext, context: { params: Promise<{ [key: string]: string }> }) {
   try {
     await connectToDatabase();
     const body = await req.json();
     const validated = recordPaymentSchema.parse(body);
 
     // Verify the sale belongs to the company
-    const sale = await (await import("@/models/Sale")).Sale.findOne({ _id: validated.saleId, companyId: ctx.companyId });
+    const Sale = (await import("@/models/Sale")).Sale;
+    const sale = await Sale.findOne({ _id: validated.saleId, companyId: ctx.companyId || "" });
     if (!sale) {
       return errorResponse({ status: 404, code: "NOT_FOUND", message: "Sale not found" });
     }
@@ -55,7 +56,7 @@ async function postHandler(req: NextRequest, ctx: any) {
     const customerIdValue = sale.customerId ? new Types.ObjectId(sale.customerId.toString()) : new Types.ObjectId();
 
     await recordPayment({
-      companyId: new Types.ObjectId(ctx.companyId as string),
+      companyId: new Types.ObjectId(ctx.companyId || ""),
       saleId: new Types.ObjectId(validated.saleId),
       customerId: customerIdValue,
       amount: validated.amount,
@@ -63,7 +64,7 @@ async function postHandler(req: NextRequest, ctx: any) {
       paymentMethod: "cash",
       referenceNumber: validated.referenceNumber ?? null,
       notes: validated.notes ?? null,
-      recordedBy: new Types.ObjectId(ctx.userId as string),
+      recordedBy: new Types.ObjectId(ctx.userId || ""),
     });
 
     return createdResponse(null, "Payment recorded successfully");
@@ -72,5 +73,5 @@ async function postHandler(req: NextRequest, ctx: any) {
   }
 }
 
-export const GET = withAuth(handler as any) as any;
-export const POST = withAuth(postHandler as any) as any;
+export const GET = withAuth(handler);
+export const POST = withAuth(postHandler);
