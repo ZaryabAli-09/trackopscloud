@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { withAuth } from "@/lib/permissions";
-import { errorResponse, successResponse, paginationSchema } from "@/lib/api/response";
+import { errorResponse, successResponse } from "@/lib/api/response";
+import { paginationSchema } from "@/lib/validation/schemas";
 import { Company } from "@/models/Company";
 import { User } from "@/models/User";
 import { connectToDatabase } from "@/lib/db/connection";
@@ -74,4 +75,4 @@ async function handler(req: NextRequest, ctx: any) {
   }
 }
 
-export const GET = withAuth(handler as any);
+export const GET = withAuth(handler as any) as any;

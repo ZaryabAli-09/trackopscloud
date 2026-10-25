@@ -73,7 +73,7 @@ async function handler(req: NextRequest, ctx: any, { params }: { params: { id: s
       entityType: "Company",
       entityId: company._id,
       metadata: { previousStatus, newStatus: status, rejectionReason },
-      ipAddress: req.ip ?? undefined,
+      ipAddress: (req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? undefined) as string | undefined,
       userAgent: req.headers.get("user-agent") ?? undefined,
     });
 
@@ -114,4 +114,4 @@ async function handler(req: NextRequest, ctx: any, { params }: { params: { id: s
   }
 }
 
-export const POST = withAuth(handler as any);
+export const POST = withAuth(handler as any) as any;

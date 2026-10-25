@@ -1,16 +1,18 @@
+"use client";
+
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { LogOut, LayoutDashboard, Building, Users as UsersIcon, Shield } from "lucide-react";
 import { Role } from "@/types";
 
 export default function PlatformAdminLayout({ children }: { children: React.ReactNode }) {
-  const { data: session } = useSession();
+  const { data: session } = (useSession() as { data: { user?: { name?: string | null; email?: string | null; role?: string | null } } | null }) || { data: null };
 
-  const user = session?.user as { name?: string | null; email?: string | null; role?: Role | null };
+  const user = session?.user as { name?: string | null; email?: string | null; role?: Role | null } | undefined;
 
-  const userName = user.name || "Admin";
-  const userEmail = user.email || "";
-  const userRole = user.role || "";
+  const userName = user?.name || "Admin";
+  const userEmail = user?.email || "";
+  const userRole = user?.role || "";
 
   const navItems = [
     { label: "Overview", href: "/platform-admin", icon: LayoutDashboard },

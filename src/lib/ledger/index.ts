@@ -1,4 +1,4 @@
-import { Types, ClientSession, type SessionOptions as MongooseSessionOptions } from "mongoose";
+import { Types, ClientSession } from "mongoose";
 import { Product } from "@/models/Product";
 import { Sale } from "@/models/Sale";
 import { Payment } from "@/models/Payment";
@@ -26,7 +26,7 @@ export async function recordStockAdjustment(
 ): Promise<void> {
   await connectToDatabase();
 
-  const product = await Product.findById(input.productId).session(session as ClientSession | undefined);
+  const product = await Product.findById(input.productId).session(session ?? null);
   if (!product) {
     throw new AppError({ status: 404, code: "PRODUCT_NOT_FOUND", message: "Product not found" });
   }

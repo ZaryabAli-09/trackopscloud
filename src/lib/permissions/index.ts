@@ -133,13 +133,13 @@ export function requireCompanyAdminOrEmployee() {
   return requireRole(["platform_admin", "company_admin", "company_employee"]);
 }
 
-export async function withAuth(
-  handler: (req: NextRequest, ctx: AuthorizedRequestContext) => Promise<NextResponse>
+export function withAuth(
+  handler: (req: NextRequest, ctx: AuthorizedRequestContext, context: { params: Promise<{ [key: string]: string }> }) => Promise<NextResponse>
 ) {
-  return async (req: NextRequest): Promise<NextResponse> => {
+  return async (req: NextRequest, context: { params: Promise<{ [key: string]: string }> }): Promise<NextResponse> => {
     try {
       const ctx = await getAuthenticatedUser(req);
-      return await handler(req, ctx);
+      return await handler(req, ctx, context);
     } catch (error) {
       if (error instanceof AppError) {
         return errorResponse({

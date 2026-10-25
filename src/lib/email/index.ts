@@ -1,10 +1,10 @@
-import nodemailer from "nodemailer";
+import nodemailer, { type Transporter } from "nodemailer";
 import { serverEnv } from "@/config/app.config";
 import { appConfig } from "@/config/app.config";
 
-let transporter: nodemailer.Transporter | null = null;
+let transporter: Transporter | null = null;
 
-function getTransporter(): nodemailer.Transporter {
+function getTransporter(): Transporter {
   if (transporter) return transporter;
 
   if (!serverEnv.SMTP_HOST || !serverEnv.SMTP_USER || !serverEnv.SMTP_PASS) {

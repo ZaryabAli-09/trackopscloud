@@ -48,5 +48,5 @@ async function postHandler(req: NextRequest, ctx: any) {
   }
 }
 
-export const GET = withAuth(handler as any);
-export const POST = withAuth(postHandler as any);
+export const GET = withAuth(handler as any) as any;
+export const POST = withAuth(postHandler as any) as any;

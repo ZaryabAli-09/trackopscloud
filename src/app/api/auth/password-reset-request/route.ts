@@ -5,7 +5,7 @@ import { User } from "@/models/User";
 import { PasswordResetToken } from "@/models/PasswordResetToken";
 import { passwordResetRequestSchema } from "@/lib/validation/schemas";
 import { sendEmail, passwordResetEmail } from "@/lib/email";
-import { crypto } from "crypto";
+import * as crypto from "crypto";
 
 async function handler(req: NextRequest, correlationId: string) {
   try {

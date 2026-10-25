@@ -1,4 +1,3 @@
-import type { NextAuthConfig } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { User } from "@/models/User";
@@ -7,7 +6,7 @@ import { connectToDatabase } from "@/lib/db/connection";
 import { serverEnv } from "@/config/app.config";
 import { Role, CompanyStatus } from "@/types";
 
-export const authConfig: NextAuthConfig = {
+export const authConfig = {
   providers: [
     CredentialsProvider({
       name: "credentials",
@@ -66,11 +65,11 @@ export const authConfig: NextAuthConfig = {
     }),
   ],
   session: {
-    strategy: "jwt",
+    strategy: "jwt" as const,
     maxAge: 60 * 24 * 60 * 60, // 60 days
   },
   callbacks: {
-    async jwt({ token, user }: { token: Record<string, unknown>; user?: { id?: string; email?: string; role?: string; companyId?: string | null; companyStatus?: string | null; sessionVersion?: number } }) {
+    async jwt({ token, user }: any) {
       if (user) {
         token.id = user.id;
         token.email = user.email;
@@ -79,9 +78,9 @@ export const authConfig: NextAuthConfig = {
         token.companyStatus = user.companyStatus;
         token.sessionVersion = user.sessionVersion;
       }
-      return token as Record<string, unknown>;
+      return token;
     },
-    async session({ session, token }: { session: { user: Record<string, unknown> }; token: Record<string, unknown> }) {
+    async session({ session, token }: any) {
       if (session.user) {
         session.user.id = token.id as string;
         session.user.role = token.role as string;

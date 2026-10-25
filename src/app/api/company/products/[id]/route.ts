@@ -59,6 +59,6 @@ async function handler(req: NextRequest, ctx: any, { params }: { params: { id: s
   }
 }
 
-export const GET = withAuth(handler as any);
-export const PUT = withAuth(handler as any);
-export const DELETE = withAuth(handler as any);
+export const GET = withAuth(handler as any) as any;
+export const PUT = withAuth(handler as any) as any;
+export const DELETE = withAuth(handler as any) as any;

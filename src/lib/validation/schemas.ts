@@ -21,7 +21,7 @@ export const companyRegistrationSchema = z.object({
 });
 
 export const companyStatusUpdateSchema = z.object({
-  status: z.enum(["approved", "rejected", "suspended"]),
+  status: z.enum(["approved", "rejected", "suspended", "pending"]),
   rejectionReason: z.string().max(500).optional().nullable(),
 });
 
@@ -107,6 +107,7 @@ export const recordPaymentSchema = z.object({
   saleId: objectIdSchema,
   amount: z.number().positive(),
   paymentDate: z.string().datetime().optional().nullable(),
+  referenceNumber: z.string().max(200).optional().nullable(),
   notes: z.string().max(1000).optional().nullable(),
 });
 

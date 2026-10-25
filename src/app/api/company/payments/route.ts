@@ -5,6 +5,7 @@ import { recordPayment } from "@/lib/ledger";
 import { recordPaymentSchema, paginationSchema } from "@/lib/validation/schemas";
 import { Payment } from "@/models/Payment";
 import { connectToDatabase } from "@/lib/db/connection";
+import { Types } from "mongoose";
 
 async function handler(req: NextRequest, ctx: any) {
   try {
@@ -51,16 +52,18 @@ async function postHandler(req: NextRequest, ctx: any) {
       return errorResponse({ status: 404, code: "NOT_FOUND", message: "Sale not found" });
     }
 
+    const customerIdValue = sale.customerId ? new Types.ObjectId(sale.customerId.toString()) : new Types.ObjectId();
+
     await recordPayment({
-      companyId: ctx.companyId,
-      saleId: validated.saleId,
-      customerId: sale.customerId,
+      companyId: new Types.ObjectId(ctx.companyId as string),
+      saleId: new Types.ObjectId(validated.saleId),
+      customerId: customerIdValue,
       amount: validated.amount,
       paymentDate: validated.paymentDate ? new Date(validated.paymentDate) : new Date(),
       paymentMethod: "cash",
-      referenceNumber: validated.referenceNumber,
-      notes: validated.notes,
-      recordedBy: ctx.userId,
+      referenceNumber: validated.referenceNumber ?? null,
+      notes: validated.notes ?? null,
+      recordedBy: new Types.ObjectId(ctx.userId as string),
     });
 
     return createdResponse(null, "Payment recorded successfully");
@@ -69,5 +72,5 @@ async function postHandler(req: NextRequest, ctx: any) {
   }
 }
 
-export const GET = withAuth(handler as any);
-export const POST = withAuth(postHandler as any);
+export const GET = withAuth(handler as any) as any;
+export const POST = withAuth(postHandler as any) as any;

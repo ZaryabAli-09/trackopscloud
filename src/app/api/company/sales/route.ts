@@ -5,6 +5,7 @@ import { createSale } from "@/lib/ledger";
 import { saleSchema, paginationSchema } from "@/lib/validation/schemas";
 import { Sale } from "@/models/Sale";
 import { connectToDatabase } from "@/lib/db/connection";
+import { Types } from "mongoose";
 
 async function handler(req: NextRequest, ctx: any) {
   try {
@@ -45,10 +46,10 @@ async function postHandler(req: NextRequest, ctx: any) {
     const validated = saleSchema.parse(body);
 
     const sale = await createSale({
-      companyId: ctx.companyId,
-      customerId: validated.customerId,
+      companyId: new Types.ObjectId(ctx.companyId as string),
+      customerId: validated.customerId ? new Types.ObjectId(validated.customerId) : null,
       items: validated.items.map((item: any) => ({
-        productId: item.productId,
+        productId: new Types.ObjectId(item.productId),
         productName: item.productName,
         sku: item.sku,
         quantity: item.quantity,
@@ -58,7 +59,7 @@ async function postHandler(req: NextRequest, ctx: any) {
       paymentStatus: validated.paymentStatus,
       amountPaid: validated.amountPaid,
       notes: validated.notes,
-      recordedBy: ctx.userId,
+      recordedBy: new Types.ObjectId(ctx.userId as string),
       saleDate: new Date(),
     });
 
@@ -68,5 +69,5 @@ async function postHandler(req: NextRequest, ctx: any) {
   }
 }
 
-export const GET = withAuth(handler as any);
-export const POST = withAuth(postHandler as any);
+export const GET = withAuth(handler as any) as any;
+export const POST = withAuth(postHandler as any) as any;
