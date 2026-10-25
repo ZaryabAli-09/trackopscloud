@@ -8,7 +8,7 @@ import { appConfig } from "@/config/app.config";
 import type { Viewer } from "@/lib/auth/guard";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarRail, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -52,7 +52,9 @@ function NavUser({ viewer }: { viewer: Viewer }) {
             <ChevronsUpDown className="ml-auto size-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent side={isMobile ? "bottom" : "right"} align="end" className="min-w-56">
-            <DropdownMenuLabel>{viewer.name}</DropdownMenuLabel>
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>{viewer.name}</DropdownMenuLabel>
+            </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => void signOut({ callbackUrl: "/login" })} variant="destructive">
               <LogOut className="size-4" /> Sign out
@@ -71,6 +73,7 @@ export function DashboardShell({ viewer, children }: { viewer: Viewer; children:
   const current = nav.find((item) => item.href === pathname) ?? nav.find((item) => pathname.startsWith(`${item.href}/`)) ?? nav[0];
   const home = isPlatform ? "/platform-admin" : "/dashboard";
   const brand = isPlatform ? appConfig.name : (viewer.companyName ?? appConfig.name);
+  const mobileNav = nav.slice(0, 4);
 
   return (
     <TooltipProvider>
@@ -121,7 +124,17 @@ export function DashboardShell({ viewer, children }: { viewer: Viewer; children:
               </BreadcrumbList>
             </Breadcrumb>
           </header>
-          <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">{children}</div>
+          <div className="flex flex-1 flex-col gap-4 p-4 pb-20 md:p-6 md:pb-6">{children}</div>
+          <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 p-2 backdrop-blur md:hidden">
+            <div className="grid grid-cols-4 gap-1">
+              {mobileNav.map((item) => (
+                <Link key={item.href} href={item.href} className={`flex flex-col items-center gap-1 rounded-md px-2 py-1.5 text-xs ${current?.href === item.href ? "bg-accent font-medium text-accent-foreground" : "text-muted-foreground"}`}>
+                  <item.icon className="size-4" />
+                  <span>{item.label}</span>
+                </Link>
+              ))}
+            </div>
+          </nav>
         </SidebarInset>
       </SidebarProvider>
     </TooltipProvider>

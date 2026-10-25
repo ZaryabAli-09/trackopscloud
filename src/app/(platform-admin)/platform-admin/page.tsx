@@ -11,7 +11,7 @@ import { platformOverview } from "@/lib/services/overview";
 export default async function PlatformAdminPage() {
   const data = await platformOverview();
   return <div className="space-y-6">
-    <PageHeader title="Platform overview" description="Company registrations and recent activity." action={<Button render={<Link href="/platform-admin/companies" />}>Review companies</Button>} />
+    <PageHeader title="Platform overview" description="Company registrations and recent activity." action={<Button nativeButton={false} render={<Link href="/platform-admin/companies" />}>Review companies</Button>} />
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><StatCard title="Total companies" value={data.total} /><StatCard title="Pending approval" value={data.pending} /><StatCard title="Approved" value={data.approved} /><StatCard title="Suspended" value={data.suspended} /></div>
     <Card><CardHeader><CardTitle>Registrations over 30 days</CardTitle></CardHeader><CardContent><MetricChart data={data.registrations} xKey="day" yKey="count" label="Registrations" /></CardContent></Card>
     <div className="grid gap-4 lg:grid-cols-2">

@@ -1,3 +1,5 @@
+"use client";
+
 import { ResourceList } from "@/components/shared/resource-list";
 import { StatusBadge } from "@/components/shared/status-badge";
 

@@ -1,3 +1,5 @@
+"use client";
+
 import { ResourceList } from "@/components/shared/resource-list";
 
 export default function AuditLogsPage() {

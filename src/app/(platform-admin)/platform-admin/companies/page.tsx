@@ -1,38 +1,36 @@
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+"use client";
+
+import Link from "next/link";
+import { ExternalLink } from "lucide-react";
+import type { ColumnDef } from "@tanstack/react-table";
+import { DataTable } from "@/components/shared/data-table";
+import { PageHeader } from "@/components/shared/page-header";
+import { StatusBadge } from "@/components/shared/status-badge";
+import { useResourceList } from "@/hooks/use-resource-list";
+import { Button } from "@/components/ui/button";
+
+type CompanyRow = {
+  _id: string;
+  name: string;
+  email: string;
+  status: string;
+  userCount: number;
+  createdAt: string;
+};
 
 export default function CompaniesPage() {
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Companies</h1>
-          <p className="text-muted-foreground">Manage registered company accounts.</p>
-        </div>
-      </div>
+  const list = useResourceList<CompanyRow>("/api/platform-admin/companies");
+  const columns: ColumnDef<CompanyRow>[] = [
+    { accessorKey: "name", header: "Company", cell: ({ row }) => <Link className="font-medium underline-offset-4 hover:underline" href={`/platform-admin/companies/${row.original._id}`}>{row.original.name}</Link> },
+    { accessorKey: "email", header: "Email" },
+    { accessorKey: "status", header: "Status", cell: ({ row }) => <StatusBadge status={row.original.status} /> },
+    { accessorKey: "userCount", header: "Users" },
+    { accessorKey: "createdAt", header: "Registered", cell: ({ row }) => new Date(row.original.createdAt).toLocaleDateString() },
+    { id: "actions", header: "Actions", cell: ({ row }) => <Button nativeButton={false} size="sm" variant="outline" render={<Link href={`/platform-admin/companies/${row.original._id}`} />}><ExternalLink className="size-4" /> Review</Button> },
+  ];
 
-      <div className="flex flex-col">
-        <div className="-mx-4 overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Company</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Users</TableHead>
-                <TableHead>Registered</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <TableRow>
-                <TableCell colSpan={6} className="text-muted-foreground text-center py-4">
-                  No companies found
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-        </div>
-      </div>
-    </div>
-  );
+  return <div className="space-y-6">
+    <PageHeader title="Companies" description="Review registrations and manage company access." />
+    <DataTable data={list.data} columns={columns} page={list.page} totalPages={list.totalPages} search={list.search} onSearch={list.setSearch} onPageChange={list.setPage} loading={list.loading} error={list.error} emptyTitle="No companies found" />
+  </div>;
 }

@@ -16,7 +16,7 @@ export default async function CompanyDashboardPage() {
   if (!viewer?.companyId) redirect("/login");
   const data = await companyOverview(viewer.companyId);
   return <div className="space-y-6">
-    <PageHeader title="Overview" description={`Welcome back, ${viewer.name}.`} action={<Button render={<Link href="/dashboard/sales" />}>View sales</Button>} />
+    <PageHeader title="Overview" description={`Welcome back, ${viewer.name}.`} action={<Button nativeButton={false} render={<Link href="/dashboard/sales" />}>View sales</Button>} />
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
       <StatCard title="Active products" value={data.activeProducts} />
       <StatCard title="Low stock" value={data.lowStock} />
