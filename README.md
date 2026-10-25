@@ -1,36 +1,23 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# TrackOpsCloud
 
-## Getting Started
+Multi-tenant inventory and sales ledger built with Next.js App Router, MongoDB, Mongoose and NextAuth v4.
 
-First, run the development server:
+## Local setup
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+1. Install Node.js 20 or newer and a MongoDB replica set (transactions require one). MongoDB Atlas is suitable.
+2. Run `npm ci`.
+3. Copy `.env.example` to `.env` and fill in the values. Keep `.env` private.
+4. Run `npm run seed:platform-admin` once to create the initial platform administrator. The seed script skips an existing administrator and never changes its password.
+5. Run `npm run dev` and open the URL in `NEXTAUTH_URL`.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Environment
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+`MONGODB_URI` must point to a MongoDB replica set. `MONGODB_DB_NAME` optionally overrides the database in the URI.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+NextAuth v4 uses `NEXTAUTH_URL` as its canonical public URL in production. Set `NEXTAUTH_SECRET` to a stable random value of at least 32 characters. `AUTH_SECRET` is accepted as an alias by this app; keep the two equal if both are present. Changing the secret invalidates existing JWTs. The session lifetime is 60 days, but the API rechecks user status, company status and session version for each request.
 
-## Learn More
+`NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_PLATFORM_CONTACT_EMAIL` and `NEXT_PUBLIC_PLATFORM_SUPPORT_EMAIL` contain public values used by browser components. Configure them in production; they are not secrets. `GMAIL_SMTP_EMAIL` and `GMAIL_SMTP_APP_PASSWORD` configure Gmail SMTP with an app password. Set `SMTP_FROM` to a real sender address accepted by the Gmail account. Cloudinary requires `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` and `CLOUDINARY_API_SECRET` for uploads.
 
-To learn more about Next.js, take a look at the following resources:
+## Checks
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Run `npx tsc --noEmit`, `npm run lint`, `npm run build` and `npm test`. See `PHASE_CHECKLIST.md` for implementation progress.

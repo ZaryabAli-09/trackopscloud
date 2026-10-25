@@ -1,96 +1,52 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-
-import { useState, Suspense } from "react";
+import Link from "next/link";
+import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { toast } from "sonner";
 import { z } from "zod";
+import { appConfig } from "@/config/app.config";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 
-const activateSchema = z.object({
-  token: z.string().min(1),
-  password: z.string().min(8, "Password must be at least 8 characters"),
-});
+const schema = z.object({ password: z.string().min(8, "Use at least 8 characters").regex(/[A-Z]/, "Include an uppercase letter").regex(/[a-z]/, "Include a lowercase letter").regex(/[0-9]/, "Include a number") });
 
 function ActivateContent() {
-  const searchParams = useSearchParams();
-  const token = searchParams.get("token") || "";
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const token = useSearchParams().get("token");
+  const [done, setDone] = useState(false);
+  const form = useForm<z.infer<typeof schema>>({ resolver: zodResolver(schema), defaultValues: { password: "" } });
 
-  const form = useForm<z.infer<typeof activateSchema>>({
-    resolver: zodResolver(activateSchema),
-    defaultValues: { token, password: "" },
-  });
-
-  async function onSubmit(values: z.infer<typeof activateSchema>) {
-    setError(null);
-    setMessage(null);
-
-    const res = await fetch("/api/auth/activate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: values.token, password: values.password }),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      setError(data.error?.details?.[0]?.message || data.message || "Activation failed");
-      return;
-    }
-
-    setMessage(data.message || "Account activated successfully");
+  async function onSubmit(values: z.infer<typeof schema>) {
+    try {
+      const response = await fetch("/api/auth/activate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token, ...values }) });
+      const result: { message?: string } = await response.json();
+      if (!response.ok) { toast.error(result.message ?? "Activation failed"); return; }
+      toast.success(result.message ?? "Account activated");
+      setDone(true);
+    } catch { toast.error("Activation failed. Please try again."); }
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen px-4 bg-muted/50">
-      <Card className="w-full w-md">
-        <CardHeader className="space-y-1">
-          <CardTitle>{error ? "Activation Error" : "Activate Your Account"}</CardTitle>
-          <CardDescription>Set your password to complete your TrackOpsCloud account setup.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {message && <p className="text-sm text-success">{message}</p>}
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          {!message && !error && (
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="password">New Password</Label>
-                <Input id="password" type="password" {...form.register("password")} />
-                {form.formState.errors.password && (
-                  <p className="text-sm text-destructive">{form.formState.errors.password.message}</p>
-                )}
-              </div>
-              <input type="hidden" {...form.register("token")} />
-              <Button type="submit" className="w-full" disabled={!token}>
-                Activate Account
-              </Button>
-            </form>
+    <main className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
+      <Card className="w-full max-w-sm">
+        <CardHeader><CardTitle>Activate your account</CardTitle><CardDescription>Set a password to complete your {appConfig.name} account setup.</CardDescription></CardHeader>
+        <CardContent>
+          {done ? <FieldDescription><Link href="/login">Sign in</Link></FieldDescription> : !token ? <p role="alert" className="text-sm text-destructive">This activation link is missing its token.</p> : (
+            <form onSubmit={form.handleSubmit(onSubmit)} noValidate><FieldGroup>
+              <Field data-invalid={!!form.formState.errors.password}><FieldLabel htmlFor="password">New password</FieldLabel><Input id="password" type="password" autoComplete="new-password" {...form.register("password")} /><FieldError errors={[form.formState.errors.password]} /></Field>
+              <Field><Button type="submit" disabled={form.formState.isSubmitting}>{form.formState.isSubmitting ? "Activating…" : "Activate account"}</Button><FieldDescription className="text-center"><Link href="/login">Return to sign in</Link></FieldDescription></Field>
+            </FieldGroup></form>
           )}
         </CardContent>
-        <CardFooter>
-          <p className="text-sm text-center">
-            Already have an account?{" "}
-            <a href="/login" className="font-medium text-primary hover:underline">
-              Sign in
-            </a>
-          </p>
-        </CardFooter>
       </Card>
-    </div>
+    </main>
   );
 }
 
 export default function ActivatePage() {
-  return (
-    <Suspense fallback={null}>
-      <ActivateContent />
-    </Suspense>
-  );
+  return <Suspense fallback={null}><ActivateContent /></Suspense>;
 }

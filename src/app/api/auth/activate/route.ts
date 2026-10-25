@@ -1,103 +1,43 @@
-import { NextRequest } from "next/server";
-import { withCorrelationId, errorResponse, successResponse } from "@/lib/api/response";
-import { connectToDatabase } from "@/lib/db/connection";
-import { User } from "@/models/User";
-import { Company } from "@/models/Company";
-import { AccountActivationToken } from "@/models/AccountActivationToken";
 import bcrypt from "bcryptjs";
-import { tokenQuerySchema, passwordResetSchema } from "@/lib/validation/schemas";
-import { AuditLog } from "@/models/AuditLog";
+import mongoose from "mongoose";
 import { z } from "zod";
-import * as crypto from "crypto";
+import { defineRoute } from "@/lib/api/define-route";
+import { AppError, successResponse } from "@/lib/api/response";
+import { clientAddress, limitRate } from "@/lib/auth/rate-limit";
+import { hashToken } from "@/lib/auth/tokens";
+import { connectToDatabase } from "@/lib/db/connection";
+import { passwordResetSchema } from "@/lib/validation/schemas";
+import { AccountActivationToken } from "@/models/AccountActivationToken";
+import { AuditLog } from "@/models/AuditLog";
+import { Company } from "@/models/Company";
+import { User } from "@/models/User";
 
-const activateBodySchema = z.object({
-  token: z.string().min(1),
-  password: passwordResetSchema.shape.password,
-});
+const bodySchema = z.object({ token: z.string().min(1), password: passwordResetSchema.shape.password });
 
-async function handler(req: NextRequest, correlationId: string) {
-  try {
-    const body = await req.json();
-    const { token, password } = activateBodySchema.parse(body);
-
+export const POST = defineRoute(
+  { scope: "public", bodySchema },
+  async (request, { body }) => {
+    await limitRate("activation", clientAddress(request));
     await connectToDatabase();
-
-    // Find valid, unused activation token
-    const activationToken = await AccountActivationToken.findOne({
-      token,
-      isUsed: false,
-      expiresAt: { $gt: new Date() },
-    });
-
-    if (!activationToken) {
-      return errorResponse({
-        status: 400,
-        code: "INVALID_OR_EXPIRED_TOKEN",
-        message: "Invalid or expired activation token",
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        const token = await AccountActivationToken.findOneAndUpdate({ token: hashToken(body.token), isUsed: false, expiresAt: { $gt: new Date() } }, { $set: { isUsed: true } }, { new: true, session });
+        if (!token) throw new AppError({ status: 400, code: "INVALID_OR_EXPIRED_TOKEN", message: "Invalid or expired activation token" });
+        const company = await Company.findOne({ _id: token.companyId, status: "approved" }).session(session);
+        if (!company) throw new AppError({ status: 403, code: "COMPANY_NOT_APPROVED", message: "Company is not approved" });
+        const user = await User.findOne({ _id: token.userId, companyId: company._id }).session(session);
+        if (!user) throw new AppError({ status: 400, code: "INVALID_OR_EXPIRED_TOKEN", message: "Invalid or expired activation token" });
+        user.password = await bcrypt.hash(body.password, 12);
+        user.isActive = true;
+        user.emailVerified = true;
+        user.sessionVersion += 1;
+        await user.save({ session });
+        company.isEmailVerified = true;
+        await company.save({ session });
+        await AuditLog.create([{ userId: user._id, companyId: company._id, userEmail: user.email, userRole: user.role, action: "account.activate", entityType: "User", entityId: user._id }], { session });
       });
-    }
-
-    const user = await User.findById(activationToken.userId);
-    if (!user) {
-      return errorResponse({
-        status: 404,
-        code: "USER_NOT_FOUND",
-        message: "User not found",
-      });
-    }
-    if (user.isActive === true) {
-      // User already active, but still mark token as used
-      activationToken.isUsed = true;
-      await activationToken.save();
-      return successResponse(null, "Account is already active. You can sign in.");
-    }
-
-    // Activate user
-    user.isActive = true;
-    user.emailVerified = true;
-    user.sessionVersion = (user.sessionVersion || 1) + 1; // Invalidate old sessions
-    await user.save();
-
-    // Activate company
-    const company = await Company.findById(activationToken.companyId);
-    if (company && company.status === "pending") {
-      company.status = "approved";
-      company.approvedAt = new Date();
-      company.approvedBy = user._id;
-      company.isEmailVerified = true;
-      await company.save();
-    }
-
-    // Mark token as used
-    activationToken.isUsed = true;
-    await activationToken.save();
-
-    // Audit log
-    await AuditLog.create({
-      userId: user._id,
-      companyId: user.companyId,
-      userEmail: user.email,
-      userRole: user.role,
-      action: "account.activate",
-      entityType: "User",
-      entityId: user._id,
-      metadata: { companyStatus: company?.status },
-    });
-
+    } finally { await session.endSession(); }
     return successResponse(null, "Account activated successfully. You can now sign in.");
-  } catch (error) {
-    if (error instanceof Error) {
-      if (error.name === "ZodError") {
-        return errorResponse({
-          status: 400,
-          code: "VALIDATION_ERROR",
-          message: "Validation failed",
-          details: (error as any).errors?.map((e: any) => ({ path: e.path.join("."), message: e.message })) || [],
-        });
-      }
-    }
-    throw error;
-  }
-}
-
-export const POST = withCorrelationId(handler as any);
+  },
+);

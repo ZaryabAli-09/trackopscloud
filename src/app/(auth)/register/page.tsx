@@ -1,102 +1,68 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { toast } from "sonner";
 import { z } from "zod";
+import { appConfig } from "@/config/app.config";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 
-const registerSchema = z.object({
-  name: z.string().min(2, "Company name must be at least 2 characters").max(100),
-  email: z.string().email("Invalid email address"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
-  contactNumber: z.string().optional(),
-  businessAddress: z.string().max(500).optional(),
+const schema = z.object({
+  name: z.string().min(2, "Enter your company name").max(100),
+  email: z.email("Enter a valid email"),
+  password: z.string().min(8, "Use at least 8 characters").regex(/[A-Z]/, "Include an uppercase letter").regex(/[a-z]/, "Include a lowercase letter").regex(/[0-9]/, "Include a number"),
+  contactNumber: z.string(),
+  businessAddress: z.string().max(500),
 });
+type Values = z.infer<typeof schema>;
 
 export default function RegisterPage() {
-  const form = useForm<z.infer<typeof registerSchema>>({
-    resolver: zodResolver(registerSchema),
-    defaultValues: { name: "", email: "", password: "", contactNumber: "", businessAddress: "" },
-  });
+  const router = useRouter();
+  const [logo, setLogo] = useState<File | null>(null);
+  const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { name: "", email: "", password: "", contactNumber: "", businessAddress: "" } });
 
-  async function onSubmit(values: z.infer<typeof registerSchema>) {
-    const res = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(values),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      alert(data.error?.details?.[0]?.message || data.message || "Registration failed");
-      return;
-    }
-
-    alert(data.message || "Registration submitted successfully");
-    if (typeof window !== "undefined") {
-      window.location.replace("/login");
+  async function onSubmit(values: Values) {
+    try {
+      const payload = new FormData();
+      for (const [key, value] of Object.entries(values)) payload.set(key, value);
+      if (logo) payload.set("logo", logo);
+      const response = await fetch("/api/auth/register", { method: "POST", body: payload });
+      const result: { message?: string; error?: { details?: Array<{ message: string }> } } = await response.json();
+      if (!response.ok) {
+        toast.error(result.error?.details?.[0]?.message ?? result.message ?? "Registration failed");
+        return;
+      }
+      toast.success(result.message ?? "Registration submitted for review");
+      router.push("/login");
+    } catch {
+      toast.error("Registration failed. Please try again.");
     }
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen px-4 bg-muted/50">
-      <Card className="w-full w-lg">
-        <CardHeader className="space-y-1">
-          <CardTitle>Register Your Company</CardTitle>
-          <CardDescription>Create your TrackOpsCloud account. Your application will be reviewed by our team.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Company Name</Label>
-              <Input id="name" placeholder="e.g. Glue Manufacturing Co." {...form.register("name")} />
-              {form.formState.errors.name && (
-                <p className="text-sm text-destructive">{form.formState.errors.name.message}</p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Company Email</Label>
-              <Input id="email" type="email" placeholder="name@company.com" {...form.register("email")} />
-              {form.formState.errors.email && (
-                <p className="text-sm text-destructive">{form.formState.errors.email.message}</p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" {...form.register("password")} />
-              {form.formState.errors.password && (
-                <p className="text-sm text-destructive">{form.formState.errors.password.message}</p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="contactNumber">Contact Number (optional)</Label>
-              <Input id="contactNumber" placeholder="+1 (555) 000-0000" {...form.register("contactNumber")} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="businessAddress">Business Address (optional)</Label>
-              <Input id="businessAddress" placeholder="123 Industrial Ave, Suite 100" {...form.register("businessAddress")} />
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Your account will be pending approval. You will receive an email once your application is reviewed.
-            </p>
-            <Button type="submit" className="w-full">Register Company</Button>
+    <main className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
+      <Card className="w-full max-w-lg">
+        <CardHeader><CardTitle>Register your company</CardTitle><CardDescription>Create a {appConfig.name} account. We will review your application.</CardDescription></CardHeader>
+        <CardContent>
+          <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
+            <FieldGroup>
+              <Field data-invalid={!!form.formState.errors.name}><FieldLabel htmlFor="name">Company name</FieldLabel><Input id="name" autoComplete="organization" {...form.register("name")} /><FieldError errors={[form.formState.errors.name]} /></Field>
+              <Field data-invalid={!!form.formState.errors.email}><FieldLabel htmlFor="email">Company email</FieldLabel><Input id="email" type="email" autoComplete="email" {...form.register("email")} /><FieldError errors={[form.formState.errors.email]} /></Field>
+              <Field data-invalid={!!form.formState.errors.password}><FieldLabel htmlFor="password">Password</FieldLabel><Input id="password" type="password" autoComplete="new-password" {...form.register("password")} /><FieldError errors={[form.formState.errors.password]} /><FieldDescription>Use 8 or more characters with upper and lowercase letters and a number.</FieldDescription></Field>
+              <Field data-invalid={!!form.formState.errors.contactNumber}><FieldLabel htmlFor="contactNumber">Contact number</FieldLabel><Input id="contactNumber" type="tel" {...form.register("contactNumber")} /><FieldError errors={[form.formState.errors.contactNumber]} /></Field>
+              <Field data-invalid={!!form.formState.errors.businessAddress}><FieldLabel htmlFor="businessAddress">Business address</FieldLabel><Input id="businessAddress" {...form.register("businessAddress")} /><FieldError errors={[form.formState.errors.businessAddress]} /></Field>
+              <Field><FieldLabel htmlFor="logo">Company logo (optional)</FieldLabel><Input id="logo" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => setLogo(event.target.files?.[0] ?? null)} /><FieldDescription>PNG, JPEG, WebP or GIF, up to 5 MB.</FieldDescription></Field>
+              <Field><Button type="submit" disabled={form.formState.isSubmitting}>{form.formState.isSubmitting ? "Submitting…" : "Register company"}</Button><FieldDescription className="text-center">Already have an account? <Link href="/login">Sign in</Link></FieldDescription></Field>
+            </FieldGroup>
           </form>
         </CardContent>
-        <CardFooter>
-          <p className="text-sm text-center">
-            Already have an account?{" "}
-            <a href="/login" className="font-medium text-primary hover:underline">
-              Sign in
-            </a>
-          </p>
-        </CardFooter>
       </Card>
-    </div>
+    </main>
   );
 }

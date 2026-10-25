@@ -1,77 +1,45 @@
-import { NextRequest } from "next/server";
-import { withAuth } from "@/lib/permissions";
-import { errorResponse, successResponse, createdResponse, handleError } from "@/lib/api/response";
-import { createSale } from "@/lib/ledger";
-import { saleSchema, paginationSchema } from "@/lib/validation/schemas";
-import { Sale } from "@/models/Sale";
-import { connectToDatabase } from "@/lib/db/connection";
 import { Types } from "mongoose";
+import { z } from "zod";
+import { defineRoute } from "@/lib/api/define-route";
+import { createdResponse, successResponse } from "@/lib/api/response";
+import { listMeta } from "@/lib/api/list";
+import { createSale } from "@/lib/ledger";
+import { paginationSchema, saleSchema } from "@/lib/validation/schemas";
+import { Sale } from "@/models/Sale";
 
-async function handler(req: NextRequest, ctx: import("@/lib/permissions").AuthorizedRequestContext, context: { params: Promise<{ [key: string]: string }> }) {
-  try {
-    await connectToDatabase();
+const querySchema = paginationSchema.extend({
+  customerId: z.string().regex(/^[0-9a-f]{24}$/i).optional(),
+  paymentStatus: z.enum(["pending", "partial", "paid", "overdue", "voided"]).optional(),
+});
 
-    const { searchParams } = new URL(req.url);
-    const query = paginationSchema.parse({
-      page: searchParams.get("page"),
-      limit: searchParams.get("limit"),
-    });
-
-    const filter: { companyId: string } = { companyId: ctx.companyId || "" };
-
+export const GET = defineRoute(
+  { scope: "company", roles: ["company_admin", "company_employee"], querySchema },
+  async (_request, { auth, query }) => {
+    const filter = {
+      companyId: auth!.companyId!,
+      ...(query.customerId ? { customerId: query.customerId } : {}),
+      ...(query.paymentStatus ? { paymentStatus: query.paymentStatus } : {}),
+    };
     const [sales, total] = await Promise.all([
-      Sale.find(filter)
-        .populate("customerId", "name phone")
-        .populate("recordedBy", "firstName lastName email")
-        .sort({ saleDate: -1, createdAt: -1 })
-        .skip((query.page - 1) * query.limit)
-        .limit(query.limit)
-        .lean(),
+      Sale.find(filter).populate("customerId", "name phone").populate("recordedBy", "firstName lastName email").sort({ saleDate: -1, createdAt: -1 }).skip((query.page - 1) * query.limit).limit(query.limit).lean(),
       Sale.countDocuments(filter),
     ]);
+    return successResponse(sales, "Sales retrieved successfully", listMeta(query.page, query.limit, total));
+  },
+);
 
-    return successResponse({
-      data: sales,
-      meta: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) },
-    }, "Sales retrieved successfully");
-  } catch (error) {
-    return handleError(error, "unknown");
-  }
-}
-
-async function postHandler(req: NextRequest, ctx: import("@/lib/permissions").AuthorizedRequestContext, context: { params: Promise<{ [key: string]: string }> }) {
-  try {
-    await connectToDatabase();
-    const body = await req.json();
-    const validated = saleSchema.parse(body);
-
+export const POST = defineRoute(
+  { scope: "company", roles: ["company_admin"], bodySchema: saleSchema },
+  async (_request, { auth, body }) => {
     const sale = await createSale({
-      companyId: new Types.ObjectId(ctx.companyId || ""),
-      customerId: validated.customerId ? new Types.ObjectId(validated.customerId) : null,
-      items: validated.items.map((item: { productId: string; productName: string; sku: string; quantity: number; unitPrice: number; discount: number }) => ({
-        productId: new Types.ObjectId(item.productId),
-        productName: item.productName,
-        sku: item.sku,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        discount: item.discount,
-      })),
-      paymentStatus: validated.paymentStatus,
-      amountPaid: validated.amountPaid,
-      notes: validated.notes,
-      recordedBy: new Types.ObjectId(ctx.userId || ""),
-      saleDate: new Date(),
+      companyId: new Types.ObjectId(auth!.companyId!),
+      customerId: body.customerId ? new Types.ObjectId(body.customerId) : null,
+      items: body.items.map((item) => ({ productId: new Types.ObjectId(item.productId), quantity: item.quantity, discount: item.discount })),
+      amountPaid: body.amountPaid,
+      notes: body.notes,
+      recordedBy: new Types.ObjectId(auth!.userId),
+      saleDate: body.saleDate ? new Date(body.saleDate) : new Date(),
     });
-
-    if (!sale) {
-      return errorResponse({ status: 500, code: "INTERNAL_ERROR", message: "Failed to record sale" });
-    }
-
     return createdResponse(sale, "Sale recorded successfully");
-  } catch (error) {
-    return handleError(error, "unknown");
-  }
-}
-
-export const GET = withAuth(handler);
-export const POST = withAuth(postHandler);
+  },
+);

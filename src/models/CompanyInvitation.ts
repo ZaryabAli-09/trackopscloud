@@ -2,6 +2,8 @@ import mongoose, { Schema, Document, model, Model, Types } from "mongoose";
 
 export interface ICompanyInvitation extends Document {
   email: string;
+  firstName: string;
+  lastName: string;
   companyId: Types.ObjectId;
   invitedBy: Types.ObjectId;
   role: "company_employee";
@@ -14,6 +16,8 @@ export interface ICompanyInvitation extends Document {
 const companyInvitationSchema = new Schema<ICompanyInvitation>(
   {
     email: { type: String, required: true, trim: true, lowercase: true },
+    firstName: { type: String, required: true, trim: true },
+    lastName: { type: String, required: true, trim: true },
     companyId: { type: Schema.Types.ObjectId, ref: "Company", required: true },
     invitedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
     role: { type: String, enum: ["company_employee"], required: true },

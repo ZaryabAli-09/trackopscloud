@@ -10,6 +10,7 @@ export interface ICompany extends Document {
   businessAddress?: string | null;
   logoUrl?: string | null;
   logoPublicId?: string | null;
+  logo?: { publicId: string; url: string } | null;
   isEmailVerified: boolean;
   emailVerificationToken?: string | null;
   emailVerificationExpires?: Date | null;
@@ -23,9 +24,12 @@ export interface ICompany extends Document {
   suspensionReason?: string | null;
   settings?: {
     allowCreditSales: boolean;
+    allowCustomNegativeStock: boolean;
+    defaultLowStockThreshold: number;
     taxRate?: number;
     defaultCurrency: string;
   };
+  saleCounter: number;
   userCount: number;
   productCount: number;
 }
@@ -44,6 +48,7 @@ const companySchema = new Schema<ICompany>(
     businessAddress: { type: String, trim: true, default: null },
     logoUrl: { type: String, default: null },
     logoPublicId: { type: String, default: null },
+    logo: { publicId: { type: String }, url: { type: String } },
     isEmailVerified: { type: Boolean, default: false },
     emailVerificationToken: { type: String, default: null },
     emailVerificationExpires: { type: Date, default: null },
@@ -57,11 +62,14 @@ const companySchema = new Schema<ICompany>(
     suspensionReason: { type: String, default: null },
     settings: {
       allowCreditSales: { type: Boolean, default: true },
+      allowCustomNegativeStock: { type: Boolean, default: false },
+      defaultLowStockThreshold: { type: Number, default: 0, min: 0 },
       taxRate: { type: Number, default: 0 },
       defaultCurrency: { type: String, default: "USD" },
     },
     userCount: { type: Number, default: 0 },
     productCount: { type: Number, default: 0 },
+    saleCounter: { type: Number, default: 0 },
   },
   { timestamps: true }
 );

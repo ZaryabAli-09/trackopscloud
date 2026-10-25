@@ -1,99 +1,69 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-
-import { Suspense } from "react";
+import Link from "next/link";
+import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { toast } from "sonner";
 import { z } from "zod";
+import { appConfig } from "@/config/app.config";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Lock } from "lucide-react";
 
-const resetSchema = z.object({
-  token: z.string().min(1),
-  password: z.string().min(8, "Password must be at least 8 characters"),
-});
+const requestSchema = z.object({ email: z.email("Enter a valid email") });
+const resetSchema = z.object({ password: z.string().min(8, "Use at least 8 characters").regex(/[A-Z]/, "Include an uppercase letter").regex(/[a-z]/, "Include a lowercase letter").regex(/[0-9]/, "Include a number") });
 
-function ResetPasswordContent() {
-  const searchParams = useSearchParams();
-  const token = searchParams.get("token") || "";
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+function ResetContent() {
+  const token = useSearchParams().get("token");
+  const [done, setDone] = useState(false);
+  const requestForm = useForm<z.infer<typeof requestSchema>>({ resolver: zodResolver(requestSchema), defaultValues: { email: "" } });
+  const resetForm = useForm<z.infer<typeof resetSchema>>({ resolver: zodResolver(resetSchema), defaultValues: { password: "" } });
 
-  const form = useForm<z.infer<typeof resetSchema>>({
-    resolver: zodResolver(resetSchema),
-    defaultValues: { token, password: "" },
-  });
+  async function submitRequest(values: z.infer<typeof requestSchema>) {
+    try {
+      const response = await fetch("/api/auth/password-reset-request", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values) });
+      const result: { message?: string } = await response.json();
+      if (!response.ok) { toast.error(result.message ?? "Request failed"); return; }
+      toast.success(result.message ?? "If the account exists, check your email for a reset link.");
+      setDone(true);
+    } catch { toast.error("Request failed. Please try again."); }
+  }
 
-  async function onSubmit(values: z.infer<typeof resetSchema>) {
-    setError(null);
-    setMessage(null);
-
-    const res = await fetch("/api/auth/password-reset", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: values.token, password: values.password }),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      setError(data.error?.details?.[0]?.message || data.message || "Password reset failed");
-      return;
-    }
-
-    setMessage(data.message || "Password reset successfully");
+  async function submitReset(values: z.infer<typeof resetSchema>) {
+    try {
+      const response = await fetch("/api/auth/password-reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token, ...values }) });
+      const result: { message?: string } = await response.json();
+      if (!response.ok) { toast.error(result.message ?? "Password reset failed"); return; }
+      toast.success(result.message ?? "Password reset successfully");
+      setDone(true);
+    } catch { toast.error("Password reset failed. Please try again."); }
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen px-4 bg-muted/50">
-      <Card className="w-full w-md">
-        <CardHeader className="space-y-1">
-          <CardTitle>{error ? "Reset Error" : "Reset Your Password"}</CardTitle>
-          <CardDescription>Enter a new password for your TrackOpsCloud account.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {message && <p className="text-sm text-success">{message}</p>}
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          {!message && !error && (
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="password">New Password</Label>
-                <Input id="password" type="password" {...form.register("password")} />
-                {form.formState.errors.password && (
-                  <p className="text-sm text-destructive">{form.formState.errors.password.message}</p>
-                )}
-              </div>
-              <input type="hidden" {...form.register("token")} />
-              <Button type="submit" className="w-full" disabled={!token}>
-                <Lock className="h-4 w-4 mr-2" />
-                Reset Password
-              </Button>
-            </form>
+    <main className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
+      <Card className="w-full max-w-sm">
+        <CardHeader><CardTitle>{token ? "Set a new password" : "Reset your password"}</CardTitle><CardDescription>{token ? `Enter a new password for your ${appConfig.name} account.` : "Enter your email and we will send a reset link if the account exists."}</CardDescription></CardHeader>
+        <CardContent>
+          {done ? <FieldDescription><Link href="/login">Return to sign in</Link></FieldDescription> : token ? (
+            <form onSubmit={resetForm.handleSubmit(submitReset)} noValidate><FieldGroup>
+              <Field data-invalid={!!resetForm.formState.errors.password}><FieldLabel htmlFor="password">New password</FieldLabel><Input id="password" type="password" autoComplete="new-password" {...resetForm.register("password")} /><FieldError errors={[resetForm.formState.errors.password]} /></Field>
+              <Field><Button type="submit" disabled={resetForm.formState.isSubmitting}>{resetForm.formState.isSubmitting ? "Saving…" : "Reset password"}</Button></Field>
+            </FieldGroup></form>
+          ) : (
+            <form onSubmit={requestForm.handleSubmit(submitRequest)} noValidate><FieldGroup>
+              <Field data-invalid={!!requestForm.formState.errors.email}><FieldLabel htmlFor="email">Email</FieldLabel><Input id="email" type="email" autoComplete="email" {...requestForm.register("email")} /><FieldError errors={[requestForm.formState.errors.email]} /></Field>
+              <Field><Button type="submit" disabled={requestForm.formState.isSubmitting}>{requestForm.formState.isSubmitting ? "Sending…" : "Send reset link"}</Button><FieldDescription className="text-center"><Link href="/login">Return to sign in</Link></FieldDescription></Field>
+            </FieldGroup></form>
           )}
         </CardContent>
-        <CardFooter>
-          <p className="text-sm text-center">
-            Remember your password?{" "}
-            <a href="/login" className="font-medium text-primary hover:underline">
-              Sign in
-            </a>
-          </p>
-        </CardFooter>
       </Card>
-    </div>
+    </main>
   );
 }
 
 export default function ResetPasswordPage() {
-  return (
-    <Suspense fallback={null}>
-      <ResetPasswordContent />
-    </Suspense>
-  );
+  return <Suspense fallback={null}><ResetContent /></Suspense>;
 }

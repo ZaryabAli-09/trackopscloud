@@ -21,8 +21,10 @@ export const companyRegistrationSchema = z.object({
 });
 
 export const companyStatusUpdateSchema = z.object({
-  status: z.enum(["approved", "rejected", "suspended", "pending"]),
-  rejectionReason: z.string().max(500).optional().nullable(),
+  status: z.enum(["approved", "rejected", "suspended"]),
+  reason: z.string().trim().min(1).max(500).optional(),
+}).superRefine((value, context) => {
+  if (value.status !== "approved" && !value.reason) context.addIssue({ code: "custom", path: ["reason"], message: "A reason is required" });
 });
 
 // User schemas
@@ -54,16 +56,13 @@ export const productSchema = z.object({
   category: z.string().max(100).optional().nullable(),
   unitOfMeasurement: z.string().min(1).max(50),
   packageSize: z.string().max(100).optional().nullable(),
-  sellingPrice: z.number().positive(),
-  costPrice: z.number().nonnegative().optional().nullable(),
-  currentStock: z.number().nonnegative().default(0),
-  lowStockThreshold: z.number().nonnegative().default(0),
-  imageUrl: z.string().url().optional().nullable(),
-  imagePublicId: z.string().optional().nullable(),
-  isArchived: z.boolean().default(false),
+  sellingPrice: z.number().int().nonnegative(),
+  costPrice: z.number().int().nonnegative().optional().nullable(),
+  openingStock: z.number().int().nonnegative().default(0),
+  lowStockThreshold: z.number().int().nonnegative().default(0),
 });
 
-export const productUpdateSchema = productSchema.partial().refine(
+export const productUpdateSchema = productSchema.omit({ openingStock: true }).partial().refine(
   (data) => Object.keys(data).length > 0,
   { message: "At least one field must be provided for update" }
 );
@@ -82,19 +81,16 @@ export const customerUpdateSchema = customerSchema.partial();
 // Sale schemas
 export const saleLineItemSchema = z.object({
   productId: objectIdSchema,
-  productName: z.string().min(1),
-  sku: z.string().min(1),
   quantity: z.number().int().positive(),
-  unitPrice: z.number().positive(),
-  discount: z.number().nonnegative().default(0),
+  discount: z.number().int().nonnegative().default(0),
 });
 
 export const saleSchema = z.object({
   customerId: objectIdSchema.optional().nullable(),
   items: z.array(saleLineItemSchema).min(1),
-  paymentStatus: z.enum(["pending", "partial", "paid", "overdue", "voided"]).default("pending"),
-  amountPaid: z.number().nonnegative().default(0),
+  amountPaid: z.number().int().nonnegative().default(0),
   notes: z.string().max(1000).optional().nullable(),
+  saleDate: z.iso.datetime().optional(),
 });
 
 export const saleUpdateSchema = z.object({
@@ -105,7 +101,7 @@ export const saleUpdateSchema = z.object({
 
 export const recordPaymentSchema = z.object({
   saleId: objectIdSchema,
-  amount: z.number().positive(),
+  amount: z.number().int().positive(),
   paymentDate: z.string().datetime().optional().nullable(),
   referenceNumber: z.string().max(200).optional().nullable(),
   notes: z.string().max(1000).optional().nullable(),

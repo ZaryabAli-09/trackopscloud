@@ -1,16 +1,4 @@
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Search, Plus } from "lucide-react";
-import Link from "next/link";
-
-const statusBadge: Record<string, string> = {
-  pending: "warning",
-  approved: "secondary",
-  rejected: "destructive",
-  suspended: "destructive",
-};
 
 export default function CompaniesPage() {
   return (

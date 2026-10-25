@@ -37,9 +37,9 @@ const stockMovementSchema = new Schema<IStockMovement>(
       ],
       required: true,
     },
-    quantity: { type: Number, required: true, min: 0 },
-    previousQuantity: { type: Number, required: true, min: 0 },
-    resultingQuantity: { type: Number, required: true, min: 0 },
+    quantity: { type: Number, required: true, min: 1, validate: Number.isInteger },
+    previousQuantity: { type: Number, required: true, validate: Number.isInteger },
+    resultingQuantity: { type: Number, required: true, validate: Number.isInteger },
     referenceType: {
       type: String,
       enum: ["sale", "adjustment", "opening", "return"],

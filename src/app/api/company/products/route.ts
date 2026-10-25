@@ -1,87 +1,53 @@
-import { NextRequest } from "next/server";
-import { withAuth } from "@/lib/permissions";
-import { errorResponse, successResponse, createdResponse, handleError } from "@/lib/api/response";
-import { Product } from "@/models/Product";
-import { connectToDatabase } from "@/lib/db/connection";
-import { productSchema, productUpdateSchema, paginationSchema } from "@/lib/validation/schemas";
+import mongoose, { Types } from "mongoose";
 import { z } from "zod";
+import { defineRoute } from "@/lib/api/define-route";
+import { createdResponse, successResponse } from "@/lib/api/response";
+import { escapeRegex, listMeta } from "@/lib/api/list";
+import { recordStockAdjustment } from "@/lib/ledger";
+import { paginationSchema, productSchema } from "@/lib/validation/schemas";
+import { AuditLog } from "@/models/AuditLog";
+import { Product } from "@/models/Product";
 
-async function handler(req: NextRequest, ctx: import("@/lib/permissions").AuthorizedRequestContext, context: { params: Promise<{ [key: string]: string }> }) {
-  try {
-    await connectToDatabase();
+const querySchema = paginationSchema.extend({
+  search: z.string().max(100).optional(),
+  category: z.string().max(100).optional(),
+  status: z.enum(["active", "archived", "all"]).default("active"),
+});
 
-    const { searchParams } = new URL(req.url);
-    const query = paginationSchema.parse({
-      page: searchParams.get("page"),
-      limit: searchParams.get("limit"),
-      sortBy: searchParams.get("sortBy"),
-      sortOrder: searchParams.get("sortOrder"),
-    });
-
-    const includeArchived = searchParams.get("includeArchived") === "true";
-
-    const filter: { companyId: string; isArchived?: boolean } = {
-      companyId: ctx.companyId || "",
+export const GET = defineRoute(
+  { scope: "company", roles: ["company_admin", "company_employee"], querySchema },
+  async (_request, { auth, query }) => {
+    const filter = {
+      companyId: auth!.companyId!,
+      ...(query.status !== "all" ? { isArchived: query.status === "archived" } : {}),
+      ...(query.category ? { category: query.category } : {}),
+      ...(query.search ? { $or: [{ name: new RegExp(escapeRegex(query.search), "i") }, { sku: new RegExp(escapeRegex(query.search), "i") }] } : {}),
     };
-    if (!includeArchived) {
-      filter.isArchived = false;
-    }
-
+    const sortKey = ["createdAt", "name", "sku", "sellingPrice", "currentStock"].includes(query.sortBy ?? "") ? query.sortBy! : "createdAt";
     const [products, total] = await Promise.all([
-      Product.find(filter)
-        .sort({ [query.sortBy || "createdAt"]: query.sortOrder === "asc" ? 1 : -1 })
-        .skip((query.page - 1) * query.limit)
-        .limit(query.limit)
-        .lean(),
+      Product.find(filter).sort({ [sortKey]: query.sortOrder === "asc" ? 1 : -1 }).skip((query.page - 1) * query.limit).limit(query.limit).lean(),
       Product.countDocuments(filter),
     ]);
+    return successResponse(products, "Products retrieved successfully", listMeta(query.page, query.limit, total));
+  },
+);
 
-    return successResponse({
-      data: products,
-      meta: {
-        page: query.page,
-        limit: query.limit,
-        total,
-        totalPages: Math.ceil(total / query.limit),
-      },
-    }, "Products retrieved successfully");
-  } catch (error) {
-    return handleError(error, "unknown");
-  }
-}
-
-async function postHandler(req: NextRequest, ctx: import("@/lib/permissions").AuthorizedRequestContext, context: { params: Promise<{ [key: string]: string }> }) {
-  try {
-    await connectToDatabase();
-
-    const body = await req.json();
-    const validated = productSchema.parse(body);
-
-    // Check for duplicate SKU within company
-    const existing = await Product.findOne({
-      companyId: ctx.companyId || "",
-      sku: validated.sku.toUpperCase(),
-      isArchived: false,
-    });
-    if (existing) {
-      return errorResponse({
-        status: 409,
-        code: "DUPLICATE_SKU",
-        message: "A product with this SKU already exists",
+export const POST = defineRoute(
+  { scope: "company", roles: ["company_admin"], bodySchema: productSchema },
+  async (_request, { auth, body }) => {
+    const companyId = new Types.ObjectId(auth!.companyId!);
+    const userId = new Types.ObjectId(auth!.userId);
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        const { openingStock, ...fields } = body;
+        const docs = await Product.create([{ ...fields, sku: fields.sku.toUpperCase(), companyId, currentStock: 0, isArchived: false }], { session });
+        if (openingStock > 0) {
+          await recordStockAdjustment({ companyId, userId, productId: docs[0]._id, movementType: "opening_stock", quantity: openingStock, referenceType: "opening", referenceId: docs[0]._id }, session);
+        }
+        await AuditLog.create([{ userId, companyId, action: "product.create", entityType: "Product", entityId: docs[0]._id }], { session });
       });
-    }
-
-    const product = await Product.create({
-      ...validated,
-      sku: validated.sku.toUpperCase(),
-      companyId: ctx.companyId || "",
-    });
-
-    return createdResponse(product, "Product created successfully");
-  } catch (error) {
-    return handleError(error, "unknown");
-  }
-}
-
-export const GET = withAuth(handler);
-export const POST = withAuth(postHandler);
+    } finally { await session.endSession(); }
+    return createdResponse(await Product.findOne({ companyId, sku: body.sku.toUpperCase() }), "Product created successfully");
+  },
+);

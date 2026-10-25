@@ -1,4 +1,4 @@
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 export default function CompanyDashboardPage() {
@@ -48,7 +48,7 @@ export default function CompanyDashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Outstanding Balance</CardTitle>
-            <Badge variant="warning">$0.00</Badge>
+            <Badge variant="secondary">$0.00</Badge>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">$0.00</div>

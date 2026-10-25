@@ -1,55 +1,30 @@
 import mongoose from "mongoose";
-import { serverEnv } from "@/config/app.config";
+import { getServerEnv } from "@/config/env.server";
 
-let isConnected = false;
+type ConnectionCache = { conn: typeof mongoose | null; promise: Promise<typeof mongoose> | null };
+const globalConnection = globalThis as typeof globalThis & { __trackopsMongo?: ConnectionCache };
+const cache = globalConnection.__trackopsMongo ??= { conn: null, promise: null };
 
-export const db = {
-  isConnected: () => isConnected,
-};
-
-export async function connectToDatabase(): Promise<void> {
-  if (isConnected) {
-    return;
-  }
-
-  if (!serverEnv.MONGODB_URI) {
-    throw new Error("MONGODB_URI is not defined");
-  }
-
-  try {
-    await mongoose.connect(serverEnv.MONGODB_URI, {
-      dbName: "trackopscloud",
+export async function connectToDatabase(): Promise<typeof mongoose> {
+  if (cache.conn && mongoose.connection.readyState === 1) return cache.conn;
+  if (!cache.promise) {
+    const env = getServerEnv();
+    cache.promise = mongoose.connect(env.MONGODB_URI, {
+      ...(env.MONGODB_DB_NAME ? { dbName: env.MONGODB_DB_NAME } : {}),
       serverSelectionTimeoutMS: 10000,
-      socketTimeoutMS: 45000,
     });
-    isConnected = true;
-    console.log("✅ MongoDB connected");
+  }
+  try {
+    cache.conn = await cache.promise;
+    return cache.conn;
   } catch (error) {
-    console.error("❌ MongoDB connection error:", error instanceof Error ? error.message : error);
+    cache.promise = null;
     throw error;
   }
 }
 
 export async function disconnectDatabase(): Promise<void> {
-  if (isConnected) {
-    await mongoose.disconnect();
-    isConnected = false;
-    console.log("📴 MongoDB disconnected");
-  }
+  await mongoose.disconnect();
+  cache.conn = null;
+  cache.promise = null;
 }
-
-// Mongoose connection event handlers
-mongoose.connection.on("disconnected", () => {
-  isConnected = false;
-  console.log("⚠️ MongoDB disconnected");
-});
-
-mongoose.connection.on("error", (err) => {
-  console.error("❌ MongoDB connection error:", err.message);
-  isConnected = false;
-});
-
-process.on("SIGINT", async () => {
-  await disconnectDatabase();
-  process.exit(0);
-});

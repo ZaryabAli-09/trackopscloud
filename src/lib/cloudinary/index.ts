@@ -1,16 +1,18 @@
 import { v2 as cloudinary } from "cloudinary";
-import { serverEnv } from "@/config/app.config";
+import { serverEnv } from "@/config/env.server";
 import { AppError } from "@/lib/api/response";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
-cloudinary.config({
-  cloud_name: serverEnv.CLOUDINARY_CLOUD_NAME,
-  api_key: serverEnv.CLOUDINARY_API_KEY,
-  api_secret: serverEnv.CLOUDINARY_API_SECRET,
-  secure: true,
-});
+function configureCloudinary() {
+  cloudinary.config({
+    cloud_name: serverEnv.CLOUDINARY_CLOUD_NAME,
+    api_key: serverEnv.CLOUDINARY_API_KEY,
+    api_secret: serverEnv.CLOUDINARY_API_SECRET,
+    secure: true,
+  });
+}
 
 export interface UploadResult {
   publicId: string;
@@ -23,6 +25,7 @@ export interface UploadResult {
 }
 
 export function validateFile(file: File | Buffer, mimeType: string, size: number): void {
+  void file;
   if (!ALLOWED_MIME_TYPES.includes(mimeType)) {
     throw new AppError({
       status: 400,
@@ -31,7 +34,7 @@ export function validateFile(file: File | Buffer, mimeType: string, size: number
     });
   }
 
-  if (size > MAX_FILE_SIZE) {
+  if (size <= 0 || size > MAX_FILE_SIZE) {
     throw new AppError({
       status: 400,
       code: "FILE_TOO_LARGE",
@@ -48,6 +51,7 @@ export async function uploadImage(
     mimeType: string;
   }
 ): Promise<UploadResult> {
+  configureCloudinary();
   if (!serverEnv.CLOUDINARY_CLOUD_NAME || !serverEnv.CLOUDINARY_API_KEY || !serverEnv.CLOUDINARY_API_SECRET) {
     throw new AppError({
       status: 500,
@@ -80,32 +84,34 @@ export async function uploadImage(
       size: result.bytes,
       folder: options.folder,
     };
-  } catch (error) {
+  } catch {
     throw new AppError({
       status: 500,
       code: "UPLOAD_FAILED",
-      message: error instanceof Error ? error.message : "Image upload failed",
+      message: "Image upload failed",
     });
   }
 }
 
 export async function deleteImage(publicId: string): Promise<void> {
+  configureCloudinary();
   try {
-    await cloudinary.uploader.destroy(publicId);
-  } catch (error) {
-    console.error("Cloudinary delete error:", error);
-    // Don't throw - deletion failure shouldn't block the operation
+    const result = await cloudinary.uploader.destroy(publicId);
+    if (result.result !== "ok" && result.result !== "not found") throw new Error("Unexpected Cloudinary delete result");
+  } catch {
+    throw new AppError({ status: 502, code: "ASSET_DELETE_FAILED", message: "Replaced image could not be removed" });
   }
 }
 
 export function getCompanyFolder(companyId: string, type: "logos" | "items"): string {
-  return `ledgerly/companies/${companyId}/${type}`;
+  return `trackopscloud/companies/${companyId}/${type}`;
 }
 
 export function getOptimizedUrl(
   publicId: string,
   options: { width?: number; height?: number; quality?: string; format?: string } = {}
 ): string {
+  configureCloudinary();
   return cloudinary.url(publicId, {
     secure: true,
     transformation: [

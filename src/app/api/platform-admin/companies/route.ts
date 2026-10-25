@@ -1,78 +1,37 @@
-import { NextRequest } from "next/server";
-import { withAuth } from "@/lib/permissions";
-import { errorResponse, successResponse, handleError } from "@/lib/api/response";
+import { Types } from "mongoose";
+import { z } from "zod";
+import { defineRoute } from "@/lib/api/define-route";
+import { successResponse } from "@/lib/api/response";
+import { escapeRegex, listMeta } from "@/lib/api/list";
 import { paginationSchema } from "@/lib/validation/schemas";
 import { Company } from "@/models/Company";
 import { User } from "@/models/User";
-import { connectToDatabase } from "@/lib/db/connection";
-import { z } from "zod";
 
-const querySchema = z.object({
-  page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().positive().max(100).default(20),
+const querySchema = paginationSchema.extend({
   status: z.enum(["pending", "approved", "rejected", "suspended"]).optional(),
-  search: z.string().optional(),
+  search: z.string().max(100).optional(),
 });
 
-async function handler(req: NextRequest, ctx: import("@/lib/permissions").AuthorizedRequestContext, context: { params: Promise<{ [key: string]: string }> }) {
-  if (ctx.userRole !== "platform_admin") {
-    return errorResponse({ status: 403, code: "FORBIDDEN", message: "Platform admin access required" });
-  }
-
-  try {
-    await connectToDatabase();
-
-    const { searchParams } = new URL(req.url);
-    const query = querySchema.parse({
-      page: searchParams.get("page"),
-      limit: searchParams.get("limit"),
-      status: searchParams.get("status"),
-      search: searchParams.get("search"),
-    });
-
-    const filter: { status?: string; $or?: { [key: string]: { $regex: string; $options: string } }[] | undefined } = {};
-    if (query.status) filter.status = query.status;
-    if (query.search) {
-      filter.$or = [
-        { name: { $regex: query.search, $options: "i" } },
-        { email: { $regex: query.search, $options: "i" } },
-      ];
-    }
-
+export const GET = defineRoute(
+  { scope: "platform", roles: ["platform_admin"], querySchema },
+  async (_request, { query }) => {
+    const search = query.search ? new RegExp(escapeRegex(query.search), "i") : null;
+    const filter = {
+      ...(query.status ? { status: query.status } : {}),
+      ...(search ? { $or: [{ name: search }, { email: search }] } : {}),
+    };
+    type Row = { _id: Types.ObjectId; name: string; email: string; status: string; createdAt: Date; logoUrl?: string | null };
     const [companies, total] = await Promise.all([
-      Company.find(filter as any)
-        .sort({ createdAt: -1 })
-        .skip((query.page - 1) * query.limit)
-        .limit(query.limit)
-        .lean(),
-      Company.countDocuments(filter as any),
+      Company.find(filter).sort({ createdAt: -1 }).skip((query.page - 1) * query.limit).limit(query.limit).lean<Row[]>(),
+      Company.countDocuments(filter),
     ]);
-
-    // Get user counts for each company
-    const companyIds = (companies as { _id: import("mongoose").Types.ObjectId }[]).map((c) => c._id);
-    const userCounts = await User.aggregate([
-      { $match: { companyId: { $in: companyIds } } },
+    const ids = companies.map((company) => company._id);
+    const counts: Array<{ _id: Types.ObjectId; count: number }> = await User.aggregate([
+      { $match: { companyId: { $in: ids } } },
       { $group: { _id: "$companyId", count: { $sum: 1 } } },
     ]);
-    const userCountMap = new Map(userCounts.map((u: { _id: string; count: number }) => [u._id.toString(), u.count]));
-
-    const data = companies.map((company: any) => ({
-      ...company,
-      userCount: userCountMap.get((company._id as import("mongoose").Types.ObjectId).toString()) || 0,
-    }));
-
-    return successResponse({
-      data,
-      meta: {
-        page: query.page,
-        limit: query.limit,
-        total,
-        totalPages: Math.ceil(total / query.limit),
-      },
-    }, "Companies retrieved successfully");
-  } catch (error) {
-    return handleError(error, "unknown");
-  }
-}
-
-export const GET = withAuth(handler);
+    const countById = new Map(counts.map(({ _id, count }) => [_id.toString(), count]));
+    const data = companies.map((company) => ({ ...company, userCount: countById.get(company._id.toString()) ?? 0 }));
+    return successResponse(data, "Companies retrieved successfully", listMeta(query.page, query.limit, total));
+  },
+);

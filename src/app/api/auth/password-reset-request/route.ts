@@ -1,64 +1,28 @@
-import { NextRequest } from "next/server";
-import { withCorrelationId, errorResponse, successResponse } from "@/lib/api/response";
-import { connectToDatabase } from "@/lib/db/connection";
-import { User } from "@/models/User";
-import { PasswordResetToken } from "@/models/PasswordResetToken";
+import { appConfig } from "@/config/app.config";
+import { defineRoute } from "@/lib/api/define-route";
+import { AppError, successResponse } from "@/lib/api/response";
+import { clientAddress, limitRate } from "@/lib/auth/rate-limit";
+import { createToken } from "@/lib/auth/tokens";
+import { passwordResetEmail, sendEmail } from "@/lib/email";
 import { passwordResetRequestSchema } from "@/lib/validation/schemas";
-import { sendEmail, passwordResetEmail } from "@/lib/email";
-import * as crypto from "crypto";
+import { PasswordResetToken } from "@/models/PasswordResetToken";
+import { User } from "@/models/User";
 
-async function handler(req: NextRequest, correlationId: string) {
-  try {
-    const body = await req.json();
-    const { email } = passwordResetRequestSchema.parse(body);
-
-    await connectToDatabase();
-
-    const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user || !user.isActive) {
-      // Return generic response to prevent email enumeration
-      return successResponse(null, "If an account exists, a password reset link has been sent.");
+export const POST = defineRoute(
+  { scope: "public", bodySchema: passwordResetRequestSchema },
+  async (request, { body, correlationId }) => {
+    await limitRate("password-reset-request", clientAddress(request));
+    const user = await User.findOne({ email: body.email.toLowerCase(), isActive: true });
+    const genericMessage = "If an account exists, a password reset link has been sent.";
+    if (!user) return successResponse(null, genericMessage);
+    await PasswordResetToken.updateMany({ userId: user._id, isUsed: false }, { $set: { isUsed: true } });
+    const token = createToken();
+    await PasswordResetToken.create({ userId: user._id, token: token.hash, expiresAt: new Date(Date.now() + 60 * 60 * 1000), isUsed: false });
+    try { await sendEmail(passwordResetEmail(user.email, `${appConfig.url}/reset-password?token=${token.raw}`)); }
+    catch (error) {
+      console.error(`[${correlationId}] Password reset email failed`, error);
+      throw new AppError({ status: 502, code: "EMAIL_DELIVERY_FAILED", message: "Password reset email could not be sent" });
     }
-
-    // Invalidate any existing unused tokens for this user
-    await PasswordResetToken.updateMany(
-      { userId: user._id, isUsed: false },
-      { $set: { isUsed: true } }
-    );
-
-    const resetToken = crypto.randomBytes(32).toString("hex");
-    const resetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-
-    await PasswordResetToken.create({
-      userId: user._id,
-      token: resetToken,
-      expiresAt: resetExpires,
-      isUsed: false,
-    });
-
-    // Send password reset email
-    try {
-      const appUrl = process.env.APP_URL || "http://localhost:3000";
-      const resetUrl = `${appUrl}/reset-password?token=${resetToken}`;
-      await sendEmail(passwordResetEmail(user.email, resetUrl));
-    } catch (emailError) {
-      console.error("Failed to send password reset email:", emailError);
-    }
-
-    return successResponse(null, "If an account exists, a password reset link has been sent.");
-  } catch (error) {
-    if (error instanceof Error) {
-      if (error.name === "ZodError") {
-        return errorResponse({
-          status: 400,
-          code: "VALIDATION_ERROR",
-          message: "Validation failed",
-          details: (error as any).errors?.map((e: any) => ({ path: e.path.join("."), message: e.message })) || [],
-        });
-      }
-    }
-    throw error;
-  }
-}
-
-export const POST = withCorrelationId(handler as any);
+    return successResponse(null, genericMessage);
+  },
+);

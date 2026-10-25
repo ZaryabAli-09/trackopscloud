@@ -159,13 +159,3 @@ export function handleError(error: unknown, correlationId: string): NextResponse
   });
 }
 
-export function withCorrelationId(handler: (req: Request, correlationId: string) => Promise<NextResponse>) {
-  return async (req: Request): Promise<NextResponse> => {
-    const correlationId = req.headers.get("x-correlation-id") || crypto.randomUUID();
-    try {
-      return await handler(req, correlationId);
-    } catch (error) {
-      return handleError(error, correlationId);
-    }
-  };
-}

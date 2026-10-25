@@ -1,4 +1,4 @@
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 export default function PlatformAdminPage() {
@@ -26,7 +26,7 @@ export default function PlatformAdminPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Pending Approvals</CardTitle>
-            <Badge variant="warning">0</Badge>
+            <Badge variant="secondary">0</Badge>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">-</div>

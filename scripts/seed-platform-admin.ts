@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { connectToDatabase } from "@/lib/db/connection";
 import { User } from "@/models/User";
 import { AuditLog } from "@/models/AuditLog";
-import { serverEnv } from "@/config/app.config";
+import { serverEnv } from "@/config/env.server";
 
 async function seedPlatformAdmin() {
   const email = serverEnv.PLATFORM_ADMIN_SEED_EMAIL;

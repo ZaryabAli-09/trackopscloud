@@ -1,121 +1,54 @@
-import { NextRequest } from "next/server";
-import { withCorrelationId, errorResponse, successResponse, createdResponse } from "@/lib/api/response";
+import bcrypt from "bcryptjs";
+import mongoose, { Types } from "mongoose";
+import { defineRoute } from "@/lib/api/define-route";
+import { AppError, createdResponse } from "@/lib/api/response";
+import { clientAddress, limitRate } from "@/lib/auth/rate-limit";
+import { deleteImage, getCompanyFolder, uploadImage, validateFile } from "@/lib/cloudinary";
 import { connectToDatabase } from "@/lib/db/connection";
+import { applicationReceivedEmail, sendEmail } from "@/lib/email";
+import { companyRegistrationSchema } from "@/lib/validation/schemas";
+import { AuditLog } from "@/models/AuditLog";
 import { Company } from "@/models/Company";
 import { User } from "@/models/User";
-import { AccountActivationToken } from "@/models/AccountActivationToken";
-import { AuditLog } from "@/models/AuditLog";
-import bcrypt from "bcryptjs";
-import { companyRegistrationSchema } from "@/lib/validation/schemas";
-import { sendEmail, applicationReceivedEmail } from "@/lib/email";
-import * as crypto from "crypto";
 
-async function handler(req: NextRequest, correlationId: string) {
-  try {
-    const body = await req.json();
-    const validated = companyRegistrationSchema.parse(body);
-
+export const POST = defineRoute(
+  { scope: "public", bodySchema: companyRegistrationSchema },
+  async (request, { body, formData, correlationId }) => {
+    await limitRate("register", clientAddress(request));
     await connectToDatabase();
-
-    // Check for duplicate company email
-    const existingCompany = await Company.findOne({ email: validated.email.toLowerCase() });
-    if (existingCompany) {
-      return errorResponse({
-        status: 409,
-        code: "DUPLICATE_REGISTRATION",
-        message: "A company with this email is already registered",
-      });
+    const email = body.email.toLowerCase();
+    if (await Company.exists({ email }) || await User.exists({ email })) {
+      throw new AppError({ status: 409, code: "DUPLICATE_REGISTRATION", message: "An account with this email already exists" });
     }
-
-    // Check for duplicate user email
-    const existingUser = await User.findOne({ email: validated.email.toLowerCase() });
-    if (existingUser) {
-      return errorResponse({
-        status: 409,
-        code: "DUPLICATE_REGISTRATION",
-        message: "An account with this email already exists",
-      });
+    const companyId = new Types.ObjectId();
+    let logo: { publicId: string; url: string } | null = null;
+    const file = formData?.get("logo");
+    if (file instanceof File && file.size > 0) {
+      validateFile(file, file.type, file.size);
+      const uploaded = await uploadImage(Buffer.from(await file.arrayBuffer()), { folder: getCompanyFolder(companyId.toString(), "logos"), fileName: "logo", mimeType: file.type });
+      logo = { publicId: uploaded.publicId, url: uploaded.secureUrl };
     }
-
-    const hashedPassword = await bcrypt.hash(validated.password, 12);
-
-    // Create pending company
-    const company = await Company.create({
-      name: validated.name,
-      email: validated.email.toLowerCase(),
-      status: "pending",
-      contactNumber: validated.contactNumber ?? null,
-      businessAddress: validated.businessAddress ?? null,
-      isEmailVerified: false,
-      userCount: 0,
-      productCount: 0,
-    });
-
-    // Create initial company admin user
-    const user = await User.create({
-      email: validated.email.toLowerCase(),
-      password: hashedPassword,
-      firstName: validated.name.split(" ")[0] || "Admin",
-      lastName: validated.name.split(" ").slice(1).join(" ") || "User",
-      role: "company_admin",
-      companyId: company._id,
-      isActive: false, // Not active until approved
-      emailVerified: false,
-      sessionVersion: 1,
-    });
-
-    // Update company user count
-    company.userCount = 1;
-    await company.save();
-
-    // Create activation token
-    const activationToken = crypto.randomBytes(32).toString("hex");
-    const activationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-
-    await AccountActivationToken.create({
-      userId: user._id,
-      companyId: company._id,
-      token: activationToken,
-      expiresAt: activationExpires,
-      isUsed: false,
-    });
-
-    // Audit log
-    await AuditLog.create({
-      userId: user._id,
-      companyId: company._id,
-      userEmail: user.email,
-      userRole: user.role,
-      action: "company.register",
-      entityType: "Company",
-      entityId: company._id,
-      metadata: { companyName: company.name, status: company.status },
-      ipAddress: (req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? undefined) as string | undefined,
-      userAgent: req.headers.get("user-agent") ?? undefined,
-    });
-
-    // Send application received email
+    const password = await bcrypt.hash(body.password, 12);
+    const session = await mongoose.startSession();
     try {
-      const appUrl = process.env.APP_URL || "http://localhost:3000";
-      await sendEmail(applicationReceivedEmail(company.name, company.email));
-    } catch (emailError) {
-      console.error("Failed to send application received email:", emailError);
-    }
-
-    return createdResponse(null, "Registration submitted successfully. Your application is pending review.");
-  } catch (error) {
-    if (error instanceof Error) {
-      if (error.name === "ZodError") {
-        return errorResponse({
-          status: 400,
-          code: "VALIDATION_ERROR",
-          message: "Validation failed",
-          details: (error as any).errors?.map((e: any) => ({ path: e.path.join("."), message: e.message })) || [],
-        });
+      await session.withTransaction(async () => {
+        await Company.create([{ _id: companyId, name: body.name, email, status: "pending", contactNumber: body.contactNumber ?? null, businessAddress: body.businessAddress ?? null, isEmailVerified: false, userCount: 1, productCount: 0, logo }], { session });
+        const [user] = await User.create([{ email, password, firstName: body.name.split(" ")[0] || "Admin", lastName: body.name.split(" ").slice(1).join(" ") || "User", role: "company_admin", companyId, isActive: false, emailVerified: false, sessionVersion: 1 }], { session });
+        await AuditLog.create([{ userId: user._id, companyId, userEmail: email, userRole: "company_admin", action: "company.register", entityType: "Company", entityId: companyId, metadata: { status: "pending" } }], { session });
+      });
+    } catch (error) {
+      if (logo) {
+        console.error(`[${correlationId}] Registration failed after logo upload; removing asset`);
+        try { await deleteImage(logo.publicId); }
+        catch (cleanupError) { console.error(`[${correlationId}] Logo cleanup failed`, cleanupError); }
       }
+      throw error;
+    } finally { await session.endSession(); }
+    try { await sendEmail(applicationReceivedEmail(body.name, email)); }
+    catch (error) {
+      console.error(`[${correlationId}] Registration saved but confirmation email failed`, error);
+      throw new AppError({ status: 502, code: "EMAIL_DELIVERY_FAILED", message: "Registration was saved, but the confirmation email could not be sent" });
     }
-    throw error;
-  }
-}
-
-export const POST = withCorrelationId(handler as any);
+    return createdResponse({ companyId: companyId.toString() }, "Registration submitted successfully. Your application is pending review.");
+  },
+);

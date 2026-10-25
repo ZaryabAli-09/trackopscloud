@@ -3,7 +3,7 @@ import mongoose, { Schema, Document, model, Model, Types } from "mongoose";
 export interface IPayment extends Document {
   companyId: Types.ObjectId;
   saleId: Types.ObjectId;
-  customerId: Types.ObjectId;
+  customerId?: Types.ObjectId | null;
   amount: number;
   paymentDate: Date;
   paymentMethod: "cash" | "bank_transfer" | "check" | "mobile_money" | "other";
@@ -16,8 +16,8 @@ const paymentSchema = new Schema<IPayment>(
   {
     companyId: { type: Schema.Types.ObjectId, ref: "Company", required: true },
     saleId: { type: Schema.Types.ObjectId, ref: "Sale", required: true },
-    customerId: { type: Schema.Types.ObjectId, ref: "Customer", required: true },
-    amount: { type: Number, required: true, min: 0 },
+    customerId: { type: Schema.Types.ObjectId, ref: "Customer", default: null },
+    amount: { type: Number, required: true, min: 1, validate: Number.isSafeInteger },
     paymentDate: { type: Date, required: true, default: Date.now },
     paymentMethod: {
       type: String,

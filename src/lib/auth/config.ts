@@ -3,16 +3,11 @@ import bcrypt from "bcryptjs";
 import { User } from "@/models/User";
 import { Company } from "@/models/Company";
 import { connectToDatabase } from "@/lib/db/connection";
-import { serverEnv } from "@/config/app.config";
 import { Role, CompanyStatus } from "@/types";
+import type { NextAuthOptions } from "next-auth";
+import { limitRate } from "@/lib/auth/rate-limit";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type JWTContent = Record<string, any>;
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type SessionContent = Record<string, any>;
-
-export const authConfig = {
+export const authConfig: NextAuthOptions = {
   providers: [
     CredentialsProvider({
       name: "credentials",
@@ -25,6 +20,7 @@ export const authConfig = {
           throw new Error("Invalid credentials");
         }
 
+        await limitRate("login-authorize", credentials.email.toLowerCase());
         await connectToDatabase();
 
         const user = await User.findOne({ email: credentials.email.toLowerCase() }).select("+password");
@@ -38,10 +34,6 @@ export const authConfig = {
           throw new Error("Invalid credentials");
         }
 
-        if (!user.isActive) {
-          throw new Error("Account is deactivated");
-        }
-
         const company = user.companyId ? await Company.findById(user.companyId) : null;
 
         if (user.role !== "platform_admin") {
@@ -49,10 +41,10 @@ export const authConfig = {
             throw new Error("Account is not associated with a company");
           }
 
-          if (company.status !== "approved") {
-            throw new Error(`Company account is ${company.status}. Please contact support.`);
-          }
+          if (company.status !== "approved") throw new Error(`COMPANY_${company.status.toUpperCase()}`);
         }
+
+        if (!user.isActive) throw new Error("ACCOUNT_DEACTIVATED");
 
         await User.findByIdAndUpdate(user._id, { lastLoginAt: new Date() });
 
@@ -75,18 +67,18 @@ export const authConfig = {
     maxAge: 60 * 24 * 60 * 60, // 60 days
   },
   callbacks: {
-    async jwt({ token, user }: { token: JWTContent; user: Record<string, unknown> | null }) {
+    async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
         token.email = user.email;
-        token.role = (user.role as Role) || "user";
-        token.companyId = (user as { companyId: string | null }).companyId ?? null;
-        token.companyStatus = (user as { companyStatus: CompanyStatus | null }).companyStatus ?? null;
-        token.sessionVersion = (user as { sessionVersion: number }).sessionVersion ?? 1;
+        token.role = user.role as Role;
+        token.companyId = user.companyId ?? null;
+        token.companyStatus = user.companyStatus ?? null;
+        token.sessionVersion = user.sessionVersion ?? 1;
       }
       return token;
     },
-    async session({ session, token }: { session: SessionContent; token: JWTContent }) {
+    async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
         session.user.role = token.role as Role;
@@ -101,5 +93,5 @@ export const authConfig = {
     signIn: "/login",
     error: "/login",
   },
-  secret: serverEnv.AUTH_SECRET,
+  secret: process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET,
 };
