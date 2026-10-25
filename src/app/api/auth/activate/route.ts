@@ -8,6 +8,7 @@ import bcrypt from "bcryptjs";
 import { tokenQuerySchema, passwordResetSchema } from "@/lib/validation/schemas";
 import { AuditLog } from "@/models/AuditLog";
 import { z } from "zod";
+import * as crypto from "crypto";
 
 const activateBodySchema = z.object({
   token: z.string().min(1),
@@ -37,8 +38,18 @@ async function handler(req: NextRequest, correlationId: string) {
     }
 
     const user = await User.findById(activationToken.userId);
-    if (!user || !user.isActive === false) {
-      // User may already be active
+    if (!user) {
+      return errorResponse({
+        status: 404,
+        code: "USER_NOT_FOUND",
+        message: "User not found",
+      });
+    }
+    if (user.isActive === true) {
+      // User already active, but still mark token as used
+      activationToken.isUsed = true;
+      await activationToken.save();
+      return successResponse(null, "Account is already active. You can sign in.");
     }
 
     // Activate user

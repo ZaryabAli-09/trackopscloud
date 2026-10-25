@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { NextRequest } from "next/server";
 import { User } from "@/models/User";
 import { Company } from "@/models/Company";
 import { connectToDatabase } from "@/lib/db/connection";
@@ -27,7 +28,7 @@ export interface AuthorizedRequestContext {
   companyStatus: CompanyStatus | null;
 }
 
-export async function getAuthenticatedUser(req: Request): Promise<AuthorizedRequestContext> {
+export async function getAuthenticatedUser(req: NextRequest): Promise<AuthorizedRequestContext> {
   const token = await getToken({
     req,
     secret: process.env.AUTH_SECRET,
@@ -133,9 +134,9 @@ export function requireCompanyAdminOrEmployee() {
 }
 
 export async function withAuth(
-  handler: (req: Request, ctx: AuthorizedRequestContext) => Promise<NextResponse>
+  handler: (req: NextRequest, ctx: AuthorizedRequestContext) => Promise<NextResponse>
 ) {
-  return async (req: Request): Promise<NextResponse> => {
+  return async (req: NextRequest): Promise<NextResponse> => {
     try {
       const ctx = await getAuthenticatedUser(req);
       return await handler(req, ctx);

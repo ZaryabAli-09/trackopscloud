@@ -8,7 +8,7 @@ import { AuditLog } from "@/models/AuditLog";
 import bcrypt from "bcryptjs";
 import { companyRegistrationSchema } from "@/lib/validation/schemas";
 import { sendEmail, applicationReceivedEmail } from "@/lib/email";
-import { crypto } from "crypto";
+import * as crypto from "crypto";
 
 async function handler(req: NextRequest, correlationId: string) {
   try {
@@ -90,7 +90,7 @@ async function handler(req: NextRequest, correlationId: string) {
       entityType: "Company",
       entityId: company._id,
       metadata: { companyName: company.name, status: company.status },
-      ipAddress: req.ip ?? undefined,
+      ipAddress: (req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? undefined) as string | undefined,
       userAgent: req.headers.get("user-agent") ?? undefined,
     });
 

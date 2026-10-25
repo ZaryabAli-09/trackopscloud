@@ -5,6 +5,7 @@ import { User } from "@/models/User";
 import { Company } from "@/models/Company";
 import { connectToDatabase } from "@/lib/db/connection";
 import { serverEnv } from "@/config/app.config";
+import { Role, CompanyStatus } from "@/types";
 
 export const authConfig: NextAuthConfig = {
   providers: [
@@ -14,7 +15,7 @@ export const authConfig: NextAuthConfig = {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials: Record<string, string> | undefined) {
         if (!credentials?.email || !credentials?.password) {
           throw new Error("Invalid credentials");
         }
@@ -56,9 +57,9 @@ export const authConfig: NextAuthConfig = {
           name: `${user.firstName} ${user.lastName}`,
           firstName: user.firstName,
           lastName: user.lastName,
-          role: user.role,
+          role: user.role as Role,
           companyId: user.companyId?.toString() ?? null,
-          companyStatus: company?.status ?? null,
+          companyStatus: company?.status as CompanyStatus | null,
           sessionVersion: user.sessionVersion,
         };
       },
@@ -69,7 +70,7 @@ export const authConfig: NextAuthConfig = {
     maxAge: 60 * 24 * 60 * 60, // 60 days
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user }: { token: Record<string, unknown>; user?: { id?: string; email?: string; role?: string; companyId?: string | null; companyStatus?: string | null; sessionVersion?: number } }) {
       if (user) {
         token.id = user.id;
         token.email = user.email;
@@ -78,9 +79,9 @@ export const authConfig: NextAuthConfig = {
         token.companyStatus = user.companyStatus;
         token.sessionVersion = user.sessionVersion;
       }
-      return token;
+      return token as Record<string, unknown>;
     },
-    async session({ session, token }) {
+    async session({ session, token }: { session: { user: Record<string, unknown> }; token: Record<string, unknown> }) {
       if (session.user) {
         session.user.id = token.id as string;
         session.user.role = token.role as string;

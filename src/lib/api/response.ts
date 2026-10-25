@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ZodError } from "zod";
+import { ZodError, type ZodIssue } from "zod";
 
 export interface ApiResponse<T = unknown> {
   success: boolean;
@@ -110,7 +110,7 @@ export function handleError(error: unknown, correlationId: string): NextResponse
       status: 400,
       code: "VALIDATION_ERROR",
       message: "Validation failed",
-      details: error.errors.map((err) => ({
+      details: error.issues.map((err: ZodIssue) => ({
         path: err.path.join("."),
         message: err.message,
       })),

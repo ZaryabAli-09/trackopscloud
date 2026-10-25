@@ -1,20 +1,23 @@
 import { Sidebar } from "@/components/shared/sidebar";
 import { Header } from "@/components/shared/header";
 import { useSession } from "next-auth/react";
+import { Role } from "@/types";
 
 export default function CompanyDashboardLayout({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession();
 
-  const userName = session?.user?.name || "User";
-  const userEmail = session?.user?.email || "";
-  const userRole = session?.user?.role || "";
+  const user = session?.user as { name?: string | null; email?: string | null; role?: Role | null; companyId?: string | null };
+
+  const userName = user.name || "User";
+  const userEmail = user.email || "";
+  const userRole = user.role || "";
 
   return (
     <div className="flex h-screen bg-muted/50">
       <Sidebar
         userRole={userRole}
         userName={userName}
-        companyName={session?.user?.companyId || "Company"}
+        companyName={user.companyId || "Company"}
         onLogout={() => {
           if (typeof window !== "undefined") {
             window.location.href = "/api/auth/signout";

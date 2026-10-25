@@ -1,4 +1,4 @@
-import { Types, ClientSession } from "mongoose";
+import { Types, ClientSession, type SessionOptions as MongooseSessionOptions } from "mongoose";
 import { Product } from "@/models/Product";
 import { Sale } from "@/models/Sale";
 import { Payment } from "@/models/Payment";
@@ -22,11 +22,11 @@ export interface StockAdjustmentInput {
 
 export async function recordStockAdjustment(
   input: StockAdjustmentInput,
-  session?: ClientSession
+  session: ClientSession | null = null
 ): Promise<void> {
   await connectToDatabase();
 
-  const product = await Product.findById(input.productId).session(session);
+  const product = await Product.findById(input.productId).session(session as ClientSession | undefined);
   if (!product) {
     throw new AppError({ status: 404, code: "PRODUCT_NOT_FOUND", message: "Product not found" });
   }

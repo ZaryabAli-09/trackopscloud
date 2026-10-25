@@ -1,5 +1,5 @@
 import { clsx } from "clsx";
-import { tailwindMerge } from "tailwind-merge";
+import tailwindMerge from "tailwind-merge";
 
 export function cn(...inputs: (string | undefined | null | boolean)[]) {
   return tailwindMerge(clsx(inputs));
